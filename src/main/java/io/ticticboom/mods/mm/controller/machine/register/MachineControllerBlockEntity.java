@@ -5,7 +5,16 @@ import io.ticticboom.mods.mm.config.MMConfig;
 import io.ticticboom.mods.mm.controller.IControllerBlockEntity;
 import io.ticticboom.mods.mm.controller.IControllerPart;
 import io.ticticboom.mods.mm.model.ControllerModel;
+import io.ticticboom.mods.mm.port.MMPortRegistry;
 import io.ticticboom.mods.mm.recipe.MachineRecipeManager;
+import io.ticticboom.mods.mm.recipe.input.consume.ConsumeRecipeIngredientEntry;
+import io.ticticboom.mods.mm.port.item.BaseItemPortIngredient;
+import io.ticticboom.mods.mm.port.fluid.FluidPortIngredient;
+import io.ticticboom.mods.mm.port.energy.EnergyPortIngredient;
+import io.ticticboom.mods.mm.port.botania.mana.BotaniaManaPortIngredient;
+import io.ticticboom.mods.mm.port.pneumaticcraft.air.PneumaticAirPortIngredient;
+import io.ticticboom.mods.mm.port.kinetic.CreateKineticPortIngredient;
+import io.ticticboom.mods.mm.port.mekanism.chemical.MekanismChemicalPortIngredient;
 import io.ticticboom.mods.mm.recipe.RecipeModel;
 import io.ticticboom.mods.mm.recipe.RecipeStateModel;
 import io.ticticboom.mods.mm.recipe.RecipeStorages;
@@ -28,19 +37,17 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static io.ticticboom.mods.mm.config.MMConfigSetup.COMMON;
 
 public class MachineControllerBlockEntity extends BlockEntity implements IControllerBlockEntity, IControllerPart {
-    private static final AtomicInteger ACTIVE_VALIDATIONS = new AtomicInteger(0);
-    private static final int MAX_CONCURRENT_VALIDATIONS = Math.max(4, Runtime.getRuntime().availableProcessors());
 
     private final ControllerModel model;
     private final RegistryGroupHolder groupHolder;
@@ -59,6 +66,7 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
     private final Map<ResourceLocation, RecipeStateModel> activeRecipes = new HashMap<>();
     private RecipeStorages portStorages = null;
     private boolean isFormed = false;
+    @Getter
     private RecipeModel currentRecipe;
     private final ControllerModel controllerModel;
     private long lastTick = 0;
@@ -92,10 +100,7 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
     private void validateStructure(Level level) {
         if (level == null) return;
         if (structure == null) {
-            for (StructureModel structureModel : StructureManager.STRUCTURES.values()) {
-                if (!structureModel.controllerIds().contains(controllerId)) {
-                    continue;
-                }
+            for (StructureModel structureModel : StructureManager.getStructuresForController(controllerId)) {
                 if (structureModel.formed(level, getBlockPos())) {
                     setChanged();
                     structure = structureModel;
@@ -145,7 +150,39 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
         for (ResourceLocation id : toRemove) activeRecipes.remove(id);
 
         for (RecipeModel recipe : MachineRecipeManager.getRecipesByStrucutreId(structure.id())) {
-            if (!activeRecipes.containsKey(recipe.id()) && recipe.inputs().canProcess(level, portStorages, new RecipeStateModel())) {
+            if (activeRecipes.containsKey(recipe.id())) continue;
+
+            // lightweight capability pre-check: compute required port types from recipe inputs
+            java.util.Set<ResourceLocation> requiredTypes = new java.util.HashSet<>();
+            for (var input : recipe.inputs().inputs()) {
+                if (input instanceof ConsumeRecipeIngredientEntry cre) {
+                    var ingr = cre.getIngredient();
+                    if (ingr instanceof BaseItemPortIngredient) requiredTypes.add(Ref.Ports.ITEM);
+                    else if (ingr instanceof FluidPortIngredient) requiredTypes.add(Ref.Ports.FLUID);
+                    else if (ingr instanceof EnergyPortIngredient) requiredTypes.add(Ref.Ports.ENERGY);
+                    else if (ingr instanceof BotaniaManaPortIngredient) requiredTypes.add(Ref.Ports.BOTANIA_MANA);
+                    else if (ingr instanceof PneumaticAirPortIngredient) requiredTypes.add(Ref.Ports.PNEUMATIC_AIR);
+                    else if (ingr instanceof CreateKineticPortIngredient) requiredTypes.add(Ref.Ports.CREATE_KINETIC);
+                    else if (ingr instanceof MekanismChemicalPortIngredient mech) {
+                        try { var typeId = mech.getTypeId(); if (typeId != null) requiredTypes.add(typeId); }
+                        catch (Throwable ignored) { }
+                    }
+                }
+            }
+
+            if (!requiredTypes.isEmpty()) {
+                var available = MMPortRegistry.PORT_TYPES_BY_CONTROLLER.get(controllerId);
+                // If available==null the cache might not be initialized yet (startup order);
+                // in that case don't skip here — fall back to normal detailed checks.
+                if (available != null && !available.containsAll(requiredTypes)) {
+                    Ref.LOG.info("Skipping recipe {} on controller {}: required types {} but available {}", recipe.id(), controllerId, requiredTypes, available);
+                    continue;
+                }
+            }
+
+            if (!recipe.inputs().canProcess(level, portStorages, new RecipeStateModel())) {
+                continue;
+            }
                 boolean allowParallel = recipe.parallelProcessing();
                 if (recipe.parallelProcessing() == MMConfig.PARALLEL_PROCESSING_DEFAULT) {
                     allowParallel = controllerModel.parallelProcessingDefault();
@@ -156,11 +193,11 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
                         recipe.inputs().process(level, portStorages, newState);
                         newState.setCanProcess(true);
                         activeRecipes.put(recipe.id(), newState);
+                        Ref.LOG.debug("Controller {} started recipe {}", controllerId, recipe.id());
                         setChanged();
                     }
                 }
             }
-        }
         performRecipeTick();
     }
 
@@ -218,16 +255,16 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
     public ControllerModel getModel() { return model; }
 
     @Override
-    public Component getDisplayName() { return Component.literal(model.name()); }
+    public @NotNull Component getDisplayName() { return Component.literal(model.name()); }
 
     @Nullable
     @Override
-    public AbstractContainerMenu createMenu(int windowId, Inventory inv, Player player) {
+    public AbstractContainerMenu createMenu(int windowId, @NotNull Inventory inv, @NotNull Player player) {
         return new MachineControllerMenu(model, groupHolder, windowId, inv, this);
     }
 
     @Override
-    protected void saveAdditional(CompoundTag tag) {
+    protected void saveAdditional(@NotNull CompoundTag tag) {
         CompoundTag recipesTag = new CompoundTag();
         for (Map.Entry<ResourceLocation, RecipeStateModel> entry : activeRecipes.entrySet()) {
             recipesTag.put(entry.getKey().toString(), entry.getValue().save(new CompoundTag()));
@@ -240,7 +277,7 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
     }
 
     @Override
-    public void load(CompoundTag tag) {
+    public void load(@NotNull CompoundTag tag) {
         super.load(tag);
         activeRecipes.clear();
         if (tag.contains("activeRecipes")) {
@@ -273,7 +310,7 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
     }
 
     @Override
-    public CompoundTag getUpdateTag() {
+    public @NotNull CompoundTag getUpdateTag() {
         var tag = new CompoundTag();
         saveAdditional(tag);
         return tag;
@@ -331,14 +368,6 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
         }
     }
 
-    public void setFormed(boolean formed, boolean triggerRecipe) {
-        if (this.isFormed == formed) return;
-        this.isFormed = formed;
-        setChanged();
-        if (level != null) level.sendBlockUpdated(getBlockPos(), getBlockState(), getBlockState(), Block.UPDATE_CLIENTS);
-        if (formed) { if (triggerRecipe && this.structure != null) runRecipe(); } else { invalidateProgress(); }
-    }
-
     public void requestValidation() {
         if (level == null || level.isClientSide() || level.getServer() == null) return;
         MinecraftServer server = level.getServer();
@@ -353,6 +382,11 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
             }
         });
 
+        Thread t = getThread();
+        t.start();
+    }
+
+    private @NotNull Thread getThread() {
         Thread t = new Thread(() -> {
             try { Thread.sleep(100); } catch (InterruptedException ignored) { return; }
             if (level == null || level.isClientSide() || level.getServer() == null) return;
@@ -368,6 +402,6 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
             });
         }, "mm-controller-validate-delayed");
         t.setDaemon(true);
-        t.start();
+        return t;
     }
 }

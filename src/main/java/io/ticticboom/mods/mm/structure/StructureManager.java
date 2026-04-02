@@ -1,7 +1,6 @@
 package io.ticticboom.mods.mm.structure;
 
 import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import io.ticticboom.mods.mm.Ref;
 import io.ticticboom.mods.mm.compat.interop.MMInteropManager;
 import io.ticticboom.mods.mm.setup.MMRegisters;
@@ -11,6 +10,7 @@ import net.minecraft.server.packs.resources.SimpleJsonResourceReloadListener;
 import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.fml.common.Mod;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -26,11 +26,13 @@ public class StructureManager extends SimpleJsonResourceReloadListener {
 
     public static final Map<ResourceLocation, StructureModel> STRUCTURES = new HashMap<>();
     public static final Map<ResourceLocation, ItemStack> STRUCTURE_BLUEPRINTS = new HashMap<>();
+    public static final Map<ResourceLocation, List<StructureModel>> STRUCTURES_BY_CONTROLLER = new HashMap<>();
 
     public static List<StructureModel> getStructuresForController(ResourceLocation controllerId) {
-        return STRUCTURES.values().stream()
-                .filter(x -> x.controllerIds().contains(controllerId))
-                .toList();
+        if (controllerId == null) return List.of();
+        var list = STRUCTURES_BY_CONTROLLER.get(controllerId);
+        if (list == null) return List.of();
+        return List.copyOf(list);
     }
 
     public static void validateAllPieces() {
@@ -40,7 +42,7 @@ public class StructureManager extends SimpleJsonResourceReloadListener {
     }
 
     @Override
-    protected void apply(Map<ResourceLocation, JsonElement> jsons, ResourceManager resourceManager, ProfilerFiller profilerFiller) {
+    protected void apply(@NotNull Map<ResourceLocation, JsonElement> jsons, @NotNull ResourceManager resourceManager, ProfilerFiller profilerFiller) {
         profilerFiller.push("MM Structures");
         receiveStructures(jsons);
         profilerFiller.pop();
@@ -48,6 +50,7 @@ public class StructureManager extends SimpleJsonResourceReloadListener {
 
     public static void receiveStructures(Map<ResourceLocation, JsonElement> jsons) {
         STRUCTURES.clear();
+        STRUCTURES_BY_CONTROLLER.clear();
         try {
             Ref.LCTX.reset("Structure Loading");
             for (Map.Entry<ResourceLocation, JsonElement> entry : jsons.entrySet()) {
@@ -74,6 +77,9 @@ public class StructureManager extends SimpleJsonResourceReloadListener {
     private static void storeStructure(ResourceLocation id, StructureModel structure) {
         STRUCTURES.put(id, structure);
         STRUCTURE_BLUEPRINTS.put(id, MMRegisters.BLUEPRINT.get().getStructureInstance(id));
+        for (ResourceLocation controllerId : structure.controllerIds().getIds()) {
+            STRUCTURES_BY_CONTROLLER.computeIfAbsent(controllerId, x -> new ArrayList<>()).add(structure);
+        }
     }
 
 }

@@ -45,5 +45,7 @@ public class PortLoader extends AbstractConfigLoader<PortModel> {
                 portType.register(portModel);
             }
         }
+        // rebuild the port controller index after all ports have been registered
+        MMPortRegistry.rebuildPortCache();
     }
 }
