@@ -24,8 +24,7 @@ public class ItemPortParser implements IPortParser {
         if (json.has("slotCapacity")) {
             try {
                 slotCapacity = Math.max(0, Math.min(HARD_MAX, json.get("slotCapacity").getAsInt()));
-            } catch (Exception e) {
-                slotCapacity = 0;
+            } catch (Exception ignored) {
             }
         }
         return new ItemPortStorageFactory(new ItemPortStorageModel(rows, columns, autoPushSupplier, slotCapacity));
@@ -40,13 +39,13 @@ public class ItemPortParser implements IPortParser {
             try {
                 requiredNbt = NbtMatchUtils.parseFromJson(json.get("nbt"));
             } catch (Exception e) {
-                io.ticticboom.mods.mm.Ref.LOG.warn("Failed to parse ingredient nbt: " + e.getMessage());
+                io.ticticboom.mods.mm.Ref.LOG.debug("Failed to parse ingredient nbt: {}", e.getMessage());
             }
         } else if (json.has("nbt_snbt")) {
             try {
                 requiredNbt = NbtMatchUtils.parseFromJson(json.get("nbt_snbt"));
             } catch (Exception e) {
-                io.ticticboom.mods.mm.Ref.LOG.warn("Failed to parse ingredient nbt_snbt: " + e.getMessage());
+                io.ticticboom.mods.mm.Ref.LOG.debug("Failed to parse ingredient nbt_snbt: {}", e.getMessage());
             }
         }
         if (json.has("nbt_match")) {
@@ -54,8 +53,7 @@ public class ItemPortParser implements IPortParser {
                 var v = json.get("nbt_match").getAsString();
                 nbtStrong = "strong".equalsIgnoreCase(v);
             } catch (Exception e) {
-                io.ticticboom.mods.mm.Ref.LOG.warn("Failed to parse nbt_match value, defaulting to weak match: " + e.getMessage());
-                nbtStrong = false;
+                io.ticticboom.mods.mm.Ref.LOG.debug("Failed to parse nbt_match value, defaulting to weak match: {}", e.getMessage());
             }
         }
 

@@ -20,6 +20,7 @@ import net.minecraft.world.level.Level;
 import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Predicate;
 import net.minecraft.nbt.CompoundTag;
 
@@ -28,19 +29,15 @@ public class TagItemPortIngredient extends BaseItemPortIngredient {
     private final TagKey<Item> tag;
     private final ConditionalLazy<List<ItemStack>> stacks;
 
-    public TagItemPortIngredient(ResourceLocation tagId, int count) {
-        this(tagId, count, null, false);
-    }
-
     public TagItemPortIngredient(ResourceLocation tagId, int count, CompoundTag requiredNbt, boolean nbtStrong) {
         super(count, createPredicate(tagId), requiredNbt, nbtStrong);
         this.tag = ItemTags.create(tagId);
-        stacks = ConditionalLazy.create(() -> ForgeRegistries.ITEMS.tags().getTag(tag).stream().map(x -> {
+        stacks = ConditionalLazy.create(() -> Objects.requireNonNull(ForgeRegistries.ITEMS.tags()).getTag(tag).stream().map(x -> {
             var s = new ItemStack(x, count);
             if (requiredNbt != null) s.setTag(requiredNbt.copy());
             return s;
         }).toList(),
-                () -> !ForgeRegistries.ITEMS.tags().getTag(tag).isEmpty(), List.of());
+                () -> !Objects.requireNonNull(ForgeRegistries.ITEMS.tags()).getTag(tag).isEmpty(), List.of());
     }
 
     private static Predicate<ItemStack> createPredicate(ResourceLocation id) {
@@ -50,7 +47,7 @@ public class TagItemPortIngredient extends BaseItemPortIngredient {
 
     @Override
     public boolean canOutput(Level level, RecipeStorages storages, RecipeStateModel state) {
-        Ref.LOG.warn("Item Tags Ingredients will NEVER produce output, REMOVE any recipe outputs using item tags.");
+        Ref.LOG.debug("Item Tags Ingredients will NEVER produce output, REMOVE any recipe outputs using item tags.");
         return false;
     }
 

@@ -78,6 +78,15 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
     private RecipeModel currentRecipe;
     private final ControllerModel controllerModel;
     private long lastTick = 0;
+    // cached view of storage contents to avoid rebuilding every tick when recipes are running
+    private final java.util.Set<ResourceLocation> cachedAvailableItemIds = new java.util.HashSet<>();
+    private final java.util.Set<ResourceLocation> cachedAvailableFluidIds = new java.util.HashSet<>();
+    private boolean cachedHasEnergyAvailable = false;
+    private boolean cachedHasManaAvailable = false;
+    private boolean cachedHasPneumaticAir = false;
+    private boolean cachedHasKinetic = false;
+    private boolean cachedHasMekanismChemical = false;
+    private boolean storageContentCacheValid = false;
 
     public void tick() {
         if (level == null || level.isClientSide() || isRemoved()) {
@@ -146,71 +155,90 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
             portStorages = structure.getStorages(level, getBlockPos());
         }
 
-        // Build lightweight availability indices from current storages to allow fast skips
-        java.util.Set<ResourceLocation> availableItemIds = new java.util.HashSet<>();
-        java.util.Set<ResourceLocation> availableFluidIds = new java.util.HashSet<>();
-        boolean hasEnergyAvailable = false;
-        boolean hasManaAvailable = false;
-        boolean hasPneumaticAir = false;
-        boolean hasKinetic = false;
-        boolean hasMekanismChemical = false;
+        // Build lightweight availability indices from current storages to allow fast skips.
+        // Use a cached view when possible to avoid scanning inventories every tick for active recipes.
+        java.util.Set<ResourceLocation> availableItemIds = cachedAvailableItemIds;
+        java.util.Set<ResourceLocation> availableFluidIds = cachedAvailableFluidIds;
+        boolean hasEnergyAvailable = cachedHasEnergyAvailable;
+        boolean hasManaAvailable = cachedHasManaAvailable;
+        boolean hasPneumaticAir = cachedHasPneumaticAir;
+        boolean hasKinetic = cachedHasKinetic;
+        boolean hasMekanismChemical = cachedHasMekanismChemical;
 
-        if (portStorages != null) {
-            var itemStorages = portStorages.getInputStorages(ItemPortStorage.class);
-            for (ItemPortStorage s : itemStorages) {
-                var handler = s.getHandler();
-                if (handler == null) continue;
-                for (int i = 0; i < handler.getSlots(); i++) {
-                    var stack = handler.getStackInSlot(i);
-                    int actual = handler.getActualCount(i);
-                    if (!stack.isEmpty() && actual > 0) {
-                        var key = ForgeRegistries.ITEMS.getKey(stack.getItem());
-                        if (key != null) availableItemIds.add(key);
+        if (!storageContentCacheValid) {
+            cachedAvailableItemIds.clear();
+            cachedAvailableFluidIds.clear();
+            cachedHasEnergyAvailable = false;
+            cachedHasManaAvailable = false;
+            cachedHasPneumaticAir = false;
+            cachedHasKinetic = false;
+            cachedHasMekanismChemical = false;
+
+            if (portStorages != null) {
+                var itemStorages = portStorages.getInputStorages(ItemPortStorage.class);
+                for (ItemPortStorage s : itemStorages) {
+                    var handler = s.getHandler();
+                    if (handler == null) continue;
+                    for (int i = 0; i < handler.getSlots(); i++) {
+                        var stack = handler.getStackInSlot(i);
+                        int actual = handler.getActualCount(i);
+                        if (!stack.isEmpty() && actual > 0) {
+                            var key = ForgeRegistries.ITEMS.getKey(stack.getItem());
+                            if (key != null) cachedAvailableItemIds.add(key);
+                        }
                     }
+                }
+
+                var fluidStorages = portStorages.getInputStorages(FluidPortStorage.class);
+                for (FluidPortStorage s : fluidStorages) {
+                    var handler = s.getHandler();
+                    if (handler == null) continue;
+                    for (int i = 0; i < handler.getTanks(); i++) {
+                        var fs = handler.getFluidInTank(i);
+                        if (fs.getAmount() > 0) {
+                            var key = ForgeRegistries.FLUIDS.getKey(fs.getFluid());
+                            if (key != null) cachedAvailableFluidIds.add(key);
+                        }
+                    }
+                }
+
+                var energyStorages = portStorages.getInputStorages(EnergyPortStorage.class);
+                for (EnergyPortStorage s : energyStorages) {
+                    if (s.getStoredEnergy() > 0) { cachedHasEnergyAvailable = true; break; }
+                }
+
+                var manaStorages = portStorages.getInputStorages(BotaniaManaPortStorage.class);
+                for (BotaniaManaPortStorage s : manaStorages) {
+                    if (s.getStored() > 0) { cachedHasManaAvailable = true; break; }
+                }
+
+                var pneuStorages = portStorages.getInputStorages(PneumaticAirPortStorage.class);
+                for (PneumaticAirPortStorage s : pneuStorages) {
+                    if (s.getAir() > 0) { cachedHasPneumaticAir = true; break; }
+                }
+
+                var kineticStorages = portStorages.getInputStorages(CreateKineticPortStorage.class);
+                for (CreateKineticPortStorage s : kineticStorages) {
+                    if (s.getSpeed() > 0) { cachedHasKinetic = true; break; }
+                }
+
+                var mechStorages = portStorages.getInputStorages(MekanismChemicalPortStorage.class);
+                //noinspection rawtypes
+                for (MekanismChemicalPortStorage s : mechStorages) {
+                    try {
+                        var stack = s.chemicalTank.getStack();
+                        if (stack.getAmount() > 0) { cachedHasMekanismChemical = true; break; }
+                    } catch (Throwable ignored) { }
                 }
             }
 
-            var fluidStorages = portStorages.getInputStorages(FluidPortStorage.class);
-            for (FluidPortStorage s : fluidStorages) {
-                var handler = s.getHandler();
-                if (handler == null) continue;
-                for (int i = 0; i < handler.getTanks(); i++) {
-                    var fs = handler.getFluidInTank(i);
-                    if (fs.getAmount() > 0) {
-                        var key = ForgeRegistries.FLUIDS.getKey(fs.getFluid());
-                        if (key != null) availableFluidIds.add(key);
-                    }
-                }
-            }
-
-            var energyStorages = portStorages.getInputStorages(EnergyPortStorage.class);
-            for (EnergyPortStorage s : energyStorages) {
-                if (s.getStoredEnergy() > 0) { hasEnergyAvailable = true; break; }
-            }
-
-            var manaStorages = portStorages.getInputStorages(BotaniaManaPortStorage.class);
-            for (BotaniaManaPortStorage s : manaStorages) {
-                if (s.getStored() > 0) { hasManaAvailable = true; break; }
-            }
-
-            var pneuStorages = portStorages.getInputStorages(PneumaticAirPortStorage.class);
-            for (PneumaticAirPortStorage s : pneuStorages) {
-                if (s.getAir() > 0) { hasPneumaticAir = true; break; }
-            }
-
-            var kineticStorages = portStorages.getInputStorages(CreateKineticPortStorage.class);
-            for (CreateKineticPortStorage s : kineticStorages) {
-                if (s.getSpeed() > 0) { hasKinetic = true; break; }
-            }
-
-            var mechStorages = portStorages.getInputStorages(MekanismChemicalPortStorage.class);
-            //noinspection rawtypes
-            for (MekanismChemicalPortStorage s : mechStorages) {
-                try {
-                    var stack = s.chemicalTank.getStack();
-                    if (stack.getAmount() > 0) { hasMekanismChemical = true; break; }
-                } catch (Throwable ignored) { }
-            }
+            // reflect cached booleans into local variables
+            hasEnergyAvailable = cachedHasEnergyAvailable;
+            hasManaAvailable = cachedHasManaAvailable;
+            hasPneumaticAir = cachedHasPneumaticAir;
+            hasKinetic = cachedHasKinetic;
+            hasMekanismChemical = cachedHasMekanismChemical;
+            storageContentCacheValid = true;
         }
         List<ResourceLocation> toRemove = new ArrayList<>();
         for (Map.Entry<ResourceLocation, RecipeStateModel> entry : activeRecipes.entrySet()) {
@@ -220,6 +248,8 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
             if (recipe != null && state.isCanFinish() && recipe.outputs().canProcess(level, portStorages, state)) {
                 recipe.outputs().process(level, portStorages, state);
                 toRemove.add(recipeId);
+                // outputs changed storages; mark cache invalid so we rebuild before next decisions
+                storageContentCacheValid = false;
             }
         }
         for (ResourceLocation id : toRemove) activeRecipes.remove(id);
@@ -330,6 +360,8 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
                     if (activeRecipes.size() < MMConfig.MAX_PARALLEL_RECIPES) {
                         RecipeStateModel newState = new RecipeStateModel();
                         recipe.inputs().process(level, portStorages, newState);
+                        // inputs consumed/changed storages; invalidate cached view
+                        storageContentCacheValid = false;
                         newState.setCanProcess(true);
                         activeRecipes.put(recipe.id(), newState);
                         Ref.LOG.debug("Controller {} started recipe {}", controllerId, recipe.id());
@@ -348,6 +380,8 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
             RecipeModel recipe = MachineRecipeManager.RECIPES.get(recipeId);
             if (recipe != null) {
                 recipe.outputs().processTick(level, portStorages, state);
+                // outputs tick may have modified storages; invalidate cached view so next tick rebuilds
+                storageContentCacheValid = false;
                 if (!state.isCanFinish()) state.proceedTick();
                 state.setTickPercentage(((double) state.getTickProgress() / recipe.ticks()) * 100);
                 if (state.getTickProgress() >= recipe.ticks()) {
@@ -356,6 +390,8 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
                     if (canOutputs) {
                         recipe.outputs().process(level, portStorages, state);
                         toRemove.add(recipeId);
+                        // outputs processed - storages changed
+                        storageContentCacheValid = false;
                     }
                 }
             }
@@ -388,6 +424,7 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
         activeRecipes.clear();
         currentRecipe = null;
         portStorages = null;
+        storageContentCacheValid = false;
     }
 
     @Override
