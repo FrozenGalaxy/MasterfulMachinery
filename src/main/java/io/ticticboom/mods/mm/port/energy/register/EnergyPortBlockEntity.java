@@ -12,9 +12,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.game.ClientGamePacketListener;
-import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -33,6 +30,7 @@ public class  EnergyPortBlockEntity extends AbstractPortBlockEntity {
     private final boolean isInput;
 
     private final EnergyPortStorage storage;
+    @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
     private final Optional<EnergyPortAutoPushFeature> autoPushAddon;
 
     public EnergyPortBlockEntity(PortModel model, RegistryGroupHolder groupHolder, boolean isInput, BlockPos pos, BlockState state) {
@@ -74,13 +72,13 @@ public class  EnergyPortBlockEntity extends AbstractPortBlockEntity {
     }
 
     @Override
-    public Component getDisplayName() {
+    public @NotNull Component getDisplayName() {
         return Component.literal("Energy Port");
     }
 
     @Nullable
     @Override
-    public AbstractContainerMenu createMenu(int windowId, Inventory inv, Player player) {
+    public AbstractContainerMenu createMenu(int windowId, @NotNull Inventory inv, @NotNull Player player) {
         return new EnergyPortMenu(model, groupHolder, isInput, windowId, inv, this);
     }
 
@@ -103,14 +101,9 @@ public class  EnergyPortBlockEntity extends AbstractPortBlockEntity {
         return tag;
     }
 
-    @Nullable
-    @Override
-    public Packet<ClientGamePacketListener> getUpdatePacket() {
-        return ClientboundBlockEntityDataPacket.create(this);
-    }
-
     @Override
     public void setChanged() {
+        assert level != null;
         if (level.isClientSide()){
             return;
         }
@@ -119,6 +112,7 @@ public class  EnergyPortBlockEntity extends AbstractPortBlockEntity {
     }
 
     public void tick() {
+        assert level != null;
         if(lastTick == level.getGameTime()) return;
         lastTick = level.getGameTime();
         autoPushAddon.ifPresent(EnergyPortAutoPushFeature::tick);
