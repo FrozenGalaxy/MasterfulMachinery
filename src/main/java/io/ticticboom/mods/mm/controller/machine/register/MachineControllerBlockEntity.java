@@ -81,6 +81,7 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
     // cached view of storage contents to avoid rebuilding every tick when recipes are running
     private final java.util.Set<ResourceLocation> cachedAvailableItemIds = new java.util.HashSet<>();
     private final java.util.Set<ResourceLocation> cachedAvailableFluidIds = new java.util.HashSet<>();
+    private final java.util.Set<ResourceLocation> cachedAvailableMekanismIds = new java.util.HashSet<>();
     private boolean cachedHasEnergyAvailable = false;
     private boolean cachedHasManaAvailable = false;
     private boolean cachedHasPneumaticAir = false;
@@ -188,7 +189,7 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
                     if (handler == null) continue;
                     for (int i = 0; i < handler.getTanks(); i++) {
                         var fs = handler.getFluidInTank(i);
-                        int amount = (int) Math.min(Integer.MAX_VALUE, fs.getAmount());
+                        int amount = fs.getAmount();
                         int idHash = 0;
                         try {
                             var key = fs.getFluid() == null ? null : ForgeRegistries.FLUIDS.getKey(fs.getFluid());
@@ -201,19 +202,19 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
 
                 var energyStorages = portStorages.getInputStorages(EnergyPortStorage.class);
                 for (EnergyPortStorage s : energyStorages) {
-                    sig ^= (long) s.getStoredEnergy();
+                    sig ^= s.getStoredEnergy();
                     sig *= 1099511628211L;
                 }
 
                 var manaStorages = portStorages.getInputStorages(BotaniaManaPortStorage.class);
                 for (BotaniaManaPortStorage s : manaStorages) {
-                    sig ^= (long) s.getStored();
+                    sig ^= s.getStored();
                     sig *= 1099511628211L;
                 }
 
                 var pneuStorages = portStorages.getInputStorages(PneumaticAirPortStorage.class);
                 for (PneumaticAirPortStorage s : pneuStorages) {
-                    sig ^= (long) s.getAir();
+                    sig ^= s.getAir();
                     sig *= 1099511628211L;
                 }
 
@@ -232,7 +233,7 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
                         int idHash = 0;
                         try {
                             var typeId = stack.getType();
-                            if (typeId != null) idHash = typeId.hashCode();
+                            idHash = typeId.hashCode();
                         } catch (Throwable ignored) { }
                         sig ^= idHash + amount;
                         sig *= 1099511628211L;
@@ -328,7 +329,14 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
                 for (MekanismChemicalPortStorage s : mechStorages) {
                     try {
                         var stack = s.chemicalTank.getStack();
-                        if (stack.getAmount() > 0) { cachedHasMekanismChemical = true; break; }
+                        if (!stack.isEmpty() && stack.getAmount() > 0) {
+                            // chemical type -> registry name is a ResourceLocation string
+                            try {
+                                var rl = stack.getType().getRegistryName();
+                                cachedAvailableMekanismIds.add(rl);
+                            } catch (Throwable ignored) { }
+                            cachedHasMekanismChemical = true;
+                        }
                     } catch (Throwable ignored) { }
                 }
             }
@@ -399,6 +407,7 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
                     // Also gather any specific resource ids (items/fluids) that the recipe requires
                     java.util.Set<ResourceLocation> requiredItemIds = new java.util.HashSet<>();
                     java.util.Set<ResourceLocation> requiredFluidIds = new java.util.HashSet<>();
+                    java.util.Set<ResourceLocation> requiredMekanismIds = new java.util.HashSet<>();
                     boolean needsEnergy = false;
                     boolean needsMana = false;
                     boolean needsPneumatic = false;
@@ -419,8 +428,11 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
                             else if (ingr instanceof CreateKineticPortIngredient) needsKinetic = true;
                             else //noinspection rawtypes
                                 if (ingr instanceof MekanismChemicalPortIngredient mech) {
-                                try { var typeId = mech.getTypeId(); if (typeId != null) { needsMekanismChemical = true; requiredFluidIds.add(typeId); } }
-                                catch (Throwable ignored) { }
+                                try {
+                                    var chemId = mech.getChemicalId();
+                                    if (chemId != null) requiredMekanismIds.add(chemId);
+                                    needsMekanismChemical = true; // also keep generic flag for quick checks
+                                } catch (Throwable ignored) { }
                             }
                         }
                     }
@@ -469,6 +481,11 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
                         }
                         if (needsMekanismChemical && !cachedHasMekanismChemical) {
                             Ref.LOG.debug("Skipping recipe {} on controller {}: needs mekanism chemical but none available", recipe.id(), controllerId);
+                            recipeNextCheckTime.put(recipe.id(), gameTime + recipeSkipCooldownTicks);
+                            continue;
+                        }
+                        if (!requiredMekanismIds.isEmpty() && !cachedAvailableMekanismIds.containsAll(requiredMekanismIds)) {
+                            Ref.LOG.debug("Skipping recipe {} on controller {}: missing required mekanism chemicals {} (available {})", recipe.id(), controllerId, requiredMekanismIds, cachedAvailableMekanismIds);
                             recipeNextCheckTime.put(recipe.id(), gameTime + recipeSkipCooldownTicks);
                             continue;
                         }

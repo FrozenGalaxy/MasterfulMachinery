@@ -38,6 +38,14 @@ public abstract class MekanismChemicalPortIngredient<CHEMICAL extends Chemical<C
         stack = createStack(this.chemical, amount);
     }
 
+    /**
+     * Returns the ResourceLocation id of the chemical this ingredient refers to.
+     * Used by controllers to perform lightweight pre-checks by id.
+     */
+    public ResourceLocation getChemicalId() {
+        return this.id;
+    }
+
     @Override
     public boolean canProcess(Level level, RecipeStorages storages, RecipeStateModel state) {
         if (storages == null) return false;
@@ -140,8 +148,6 @@ public abstract class MekanismChemicalPortIngredient<CHEMICAL extends Chemical<C
     @Override
     public void setRecipe(IRecipeLayoutBuilder builder, RecipeModel model, IFocusGroup focus, IJeiHelpers helpers, SlotGrid grid, IRecipeSlotBuilder recipeSlot) {
         //noinspection removal
-        recipeSlot.addTooltipCallback((a, c) -> {
-            c.add(1, Component.literal(amount + " mB"));
-        });
+        recipeSlot.addTooltipCallback((a, c) -> c.add(1, Component.literal(amount + " mB")));
     }
 }
