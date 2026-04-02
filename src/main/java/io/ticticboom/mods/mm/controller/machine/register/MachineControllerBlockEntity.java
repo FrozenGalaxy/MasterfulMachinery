@@ -6,6 +6,14 @@ import io.ticticboom.mods.mm.controller.IControllerBlockEntity;
 import io.ticticboom.mods.mm.controller.IControllerPart;
 import io.ticticboom.mods.mm.model.ControllerModel;
 import io.ticticboom.mods.mm.port.MMPortRegistry;
+import io.ticticboom.mods.mm.port.item.ItemPortStorage;
+import io.ticticboom.mods.mm.port.fluid.FluidPortStorage;
+import io.ticticboom.mods.mm.port.energy.EnergyPortStorage;
+import io.ticticboom.mods.mm.port.botania.mana.BotaniaManaPortStorage;
+import io.ticticboom.mods.mm.port.pneumaticcraft.air.PneumaticAirPortStorage;
+import io.ticticboom.mods.mm.port.kinetic.CreateKineticPortStorage;
+import io.ticticboom.mods.mm.port.mekanism.chemical.MekanismChemicalPortStorage;
+import net.minecraftforge.registries.ForgeRegistries;
 import io.ticticboom.mods.mm.recipe.MachineRecipeManager;
 import io.ticticboom.mods.mm.recipe.input.consume.ConsumeRecipeIngredientEntry;
 import io.ticticboom.mods.mm.port.item.BaseItemPortIngredient;
@@ -137,6 +145,73 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
         if (portStorages == null) {
             portStorages = structure.getStorages(level, getBlockPos());
         }
+
+        // Build lightweight availability indices from current storages to allow fast skips
+        java.util.Set<ResourceLocation> availableItemIds = new java.util.HashSet<>();
+        java.util.Set<ResourceLocation> availableFluidIds = new java.util.HashSet<>();
+        boolean hasEnergyAvailable = false;
+        boolean hasManaAvailable = false;
+        boolean hasPneumaticAir = false;
+        boolean hasKinetic = false;
+        boolean hasMekanismChemical = false;
+
+        if (portStorages != null) {
+            var itemStorages = portStorages.getInputStorages(ItemPortStorage.class);
+            for (ItemPortStorage s : itemStorages) {
+                var handler = s.getHandler();
+                if (handler == null) continue;
+                for (int i = 0; i < handler.getSlots(); i++) {
+                    var stack = handler.getStackInSlot(i);
+                    int actual = handler.getActualCount(i);
+                    if (!stack.isEmpty() && actual > 0) {
+                        var key = ForgeRegistries.ITEMS.getKey(stack.getItem());
+                        if (key != null) availableItemIds.add(key);
+                    }
+                }
+            }
+
+            var fluidStorages = portStorages.getInputStorages(FluidPortStorage.class);
+            for (FluidPortStorage s : fluidStorages) {
+                var handler = s.getHandler();
+                if (handler == null) continue;
+                for (int i = 0; i < handler.getTanks(); i++) {
+                    var fs = handler.getFluidInTank(i);
+                    if (fs.getAmount() > 0) {
+                        var key = ForgeRegistries.FLUIDS.getKey(fs.getFluid());
+                        if (key != null) availableFluidIds.add(key);
+                    }
+                }
+            }
+
+            var energyStorages = portStorages.getInputStorages(EnergyPortStorage.class);
+            for (EnergyPortStorage s : energyStorages) {
+                if (s.getStoredEnergy() > 0) { hasEnergyAvailable = true; break; }
+            }
+
+            var manaStorages = portStorages.getInputStorages(BotaniaManaPortStorage.class);
+            for (BotaniaManaPortStorage s : manaStorages) {
+                if (s.getStored() > 0) { hasManaAvailable = true; break; }
+            }
+
+            var pneuStorages = portStorages.getInputStorages(PneumaticAirPortStorage.class);
+            for (PneumaticAirPortStorage s : pneuStorages) {
+                if (s.getAir() > 0) { hasPneumaticAir = true; break; }
+            }
+
+            var kineticStorages = portStorages.getInputStorages(CreateKineticPortStorage.class);
+            for (CreateKineticPortStorage s : kineticStorages) {
+                if (s.getSpeed() > 0) { hasKinetic = true; break; }
+            }
+
+            var mechStorages = portStorages.getInputStorages(MekanismChemicalPortStorage.class);
+            //noinspection rawtypes
+            for (MekanismChemicalPortStorage s : mechStorages) {
+                try {
+                    var stack = s.chemicalTank.getStack();
+                    if (stack.getAmount() > 0) { hasMekanismChemical = true; break; }
+                } catch (Throwable ignored) { }
+            }
+        }
         List<ResourceLocation> toRemove = new ArrayList<>();
         for (Map.Entry<ResourceLocation, RecipeStateModel> entry : activeRecipes.entrySet()) {
             ResourceLocation recipeId = entry.getKey();
@@ -163,8 +238,39 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
                     else if (ingr instanceof BotaniaManaPortIngredient) requiredTypes.add(Ref.Ports.BOTANIA_MANA);
                     else if (ingr instanceof PneumaticAirPortIngredient) requiredTypes.add(Ref.Ports.PNEUMATIC_AIR);
                     else if (ingr instanceof CreateKineticPortIngredient) requiredTypes.add(Ref.Ports.CREATE_KINETIC);
-                    else if (ingr instanceof MekanismChemicalPortIngredient mech) {
+                    else //noinspection rawtypes
+                        if (ingr instanceof MekanismChemicalPortIngredient mech) {
                         try { var typeId = mech.getTypeId(); if (typeId != null) requiredTypes.add(typeId); }
+                        catch (Throwable ignored) { }
+                    }
+                }
+            }
+
+            // Also gather any specific resource ids (items/fluids) that the recipe requires
+            java.util.Set<ResourceLocation> requiredItemIds = new java.util.HashSet<>();
+            java.util.Set<ResourceLocation> requiredFluidIds = new java.util.HashSet<>();
+            boolean needsEnergy = false;
+            boolean needsMana = false;
+            boolean needsPneumatic = false;
+            boolean needsKinetic = false;
+            boolean needsMekanismChemical = false;
+            for (var input : recipe.inputs().inputs()) {
+                if (input instanceof ConsumeRecipeIngredientEntry cre) {
+                    var ingr = cre.getIngredient();
+                    if (ingr instanceof BaseItemPortIngredient) {
+                        // If it's a SingleItemPortIngredient we can determine the exact id
+                        if (ingr instanceof io.ticticboom.mods.mm.port.item.SingleItemPortIngredient single) {
+                            try { var id = single.getItemId(); if (id != null) requiredItemIds.add(id); } catch (Throwable ignored) {}
+                        }
+                    } else if (ingr instanceof FluidPortIngredient fp) {
+                        try { var id = fp.getFluidId(); if (id != null) requiredFluidIds.add(id); } catch (Throwable ignored) {}
+                    } else if (ingr instanceof EnergyPortIngredient) needsEnergy = true;
+                    else if (ingr instanceof BotaniaManaPortIngredient) needsMana = true;
+                    else if (ingr instanceof PneumaticAirPortIngredient) needsPneumatic = true;
+                    else if (ingr instanceof CreateKineticPortIngredient) needsKinetic = true;
+                    else //noinspection rawtypes
+                        if (ingr instanceof MekanismChemicalPortIngredient mech) {
+                        try { var typeId = mech.getTypeId(); if (typeId != null) { needsMekanismChemical = true; requiredFluidIds.add(typeId); } }
                         catch (Throwable ignored) { }
                     }
                 }
@@ -175,7 +281,40 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
                 // If available==null the cache might not be initialized yet (startup order);
                 // in that case don't skip here — fall back to normal detailed checks.
                 if (available != null && !available.containsAll(requiredTypes)) {
-                    Ref.LOG.info("Skipping recipe {} on controller {}: required types {} but available {}", recipe.id(), controllerId, requiredTypes, available);
+                    Ref.LOG.debug("Skipping recipe {} on controller {}: required types {} but available {}", recipe.id(), controllerId, requiredTypes, available);
+                    continue;
+                }
+            }
+
+            // Fast content-based pre-check: if recipe requires specific item/fluid ids or energy-like resources and
+            // the storages do not contain them, skip early to avoid expensive canProcess scans.
+            if (portStorages != null) {
+                if (!requiredItemIds.isEmpty() && !availableItemIds.containsAll(requiredItemIds)) {
+                    Ref.LOG.debug("Skipping recipe {} on controller {}: missing required items {} (available {})", recipe.id(), controllerId, requiredItemIds, availableItemIds);
+                    continue;
+                }
+                if (!requiredFluidIds.isEmpty() && !availableFluidIds.containsAll(requiredFluidIds)) {
+                    Ref.LOG.debug("Skipping recipe {} on controller {}: missing required fluids {} (available {})", recipe.id(), controllerId, requiredFluidIds, availableFluidIds);
+                    continue;
+                }
+                if (needsEnergy && !hasEnergyAvailable) {
+                    Ref.LOG.debug("Skipping recipe {} on controller {}: needs energy but none available", recipe.id(), controllerId);
+                    continue;
+                }
+                if (needsMana && !hasManaAvailable) {
+                    Ref.LOG.debug("Skipping recipe {} on controller {}: needs botania mana but none available", recipe.id(), controllerId);
+                    continue;
+                }
+                if (needsPneumatic && !hasPneumaticAir) {
+                    Ref.LOG.debug("Skipping recipe {} on controller {}: needs pneumatic air but none available", recipe.id(), controllerId);
+                    continue;
+                }
+                if (needsKinetic && !hasKinetic) {
+                    Ref.LOG.debug("Skipping recipe {} on controller {}: needs kinetic rotation but none available", recipe.id(), controllerId);
+                    continue;
+                }
+                if (needsMekanismChemical && !hasMekanismChemical) {
+                    Ref.LOG.debug("Skipping recipe {} on controller {}: needs mekanism chemical but none available", recipe.id(), controllerId);
                     continue;
                 }
             }

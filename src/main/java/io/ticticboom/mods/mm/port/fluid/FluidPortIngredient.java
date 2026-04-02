@@ -10,6 +10,7 @@ import io.ticticboom.mods.mm.port.IPortIngredient;
 import io.ticticboom.mods.mm.recipe.RecipeModel;
 import io.ticticboom.mods.mm.recipe.RecipeStateModel;
 import io.ticticboom.mods.mm.recipe.RecipeStorages;
+import lombok.Getter;
 import mezz.jei.api.gui.builder.IRecipeLayoutBuilder;
 import mezz.jei.api.gui.builder.IRecipeSlotBuilder;
 import mezz.jei.api.helpers.IJeiHelpers;
@@ -26,9 +27,12 @@ public class FluidPortIngredient implements IPortIngredient {
 
     private final int amount;
     private final Fluid fluid;
+    @Getter
+    private final ResourceLocation fluidId;
 
     public FluidPortIngredient(ResourceLocation fluidId, int amount) {
         this.amount = amount;
+        this.fluidId = fluidId;
         fluid = ForgeRegistries.FLUIDS.getValue(fluidId);
         if (fluid == null) {
             throw new RuntimeException(String.format("Could not find fluid [%s] which is required by an MM recipe", fluidId));
