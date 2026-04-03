@@ -9,6 +9,7 @@ import io.ticticboom.mods.mm.recipe.RecipeStateModel;
 import io.ticticboom.mods.mm.recipe.RecipeStorages;
 import io.ticticboom.mods.mm.recipe.input.IRecipeIngredientEntry;
 import io.ticticboom.mods.mm.util.ChanceUtils;
+import lombok.Getter;
 import mezz.jei.api.gui.builder.IRecipeLayoutBuilder;
 import mezz.jei.api.helpers.IJeiHelpers;
 import mezz.jei.api.recipe.IFocusGroup;
@@ -19,6 +20,8 @@ import net.minecraft.world.level.Level;
 
 public class ConsumeRecipeIngredientEntry implements IRecipeIngredientEntry {
 
+    // expose ingredient for lightweight capability checks
+    @Getter
     private final IPortIngredient ingredient;
     private final double chance;
     private final boolean perTick;
@@ -57,6 +60,7 @@ public class ConsumeRecipeIngredientEntry implements IRecipeIngredientEntry {
         ingredient.ditchRecipe(level, storages, state);
     }
 
+    @SuppressWarnings("removal")
     @Override
     public void setRecipe(IRecipeLayoutBuilder builder, RecipeModel model, IFocusGroup focus, IJeiHelpers helpers, SlotGrid grid) {
         SlotGridEntry slot = grid.next();

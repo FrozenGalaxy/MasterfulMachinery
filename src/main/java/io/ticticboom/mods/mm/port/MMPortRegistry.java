@@ -22,8 +22,10 @@ import net.minecraftforge.fml.ModList;
 import java.util.*;
 
 public class MMPortRegistry {
-    private static Map<ResourceLocation, PortType> PORT_TYPES = new HashMap<>();
+    private static final Map<ResourceLocation, PortType> PORT_TYPES = new HashMap<>();
     public static List<RegistryGroupHolder> PORTS = new ArrayList<>();
+    public static final Map<ResourceLocation, List<io.ticticboom.mods.mm.model.PortModel>> PORT_MODELS_BY_CONTROLLER = new HashMap<>();
+    public static final Map<ResourceLocation, java.util.Set<ResourceLocation>> PORT_TYPES_BY_CONTROLLER = new HashMap<>();
 
     public static void init() {
         register(Ref.Ports.ITEM, new ItemPortType());
@@ -57,8 +59,20 @@ public class MMPortRegistry {
         PORT_TYPES.put(id, type);
     }
 
-    public static Collection<PortType> getPortBlocks() {
-        return PORT_TYPES.values();
+    public static void rebuildPortCache() {
+        PORT_MODELS_BY_CONTROLLER.clear();
+        PORT_TYPES_BY_CONTROLLER.clear();
+        for (RegistryGroupHolder holder : PORTS) {
+            try {
+                if (holder.getBlock().get() instanceof IPortBlock bp) {
+                    var model = bp.getModel();
+                    for (ResourceLocation controllerId : model.controllerIds().getIds()) {
+                        PORT_MODELS_BY_CONTROLLER.computeIfAbsent(controllerId, x -> new ArrayList<>()).add(model);
+                        PORT_TYPES_BY_CONTROLLER.computeIfAbsent(controllerId, x -> new java.util.HashSet<>()).add(model.type());
+                    }
+                }
+            } catch (Exception ignored) { }
+        }
     }
 
     // New flexible parser: accepts a JsonElement which can be a JsonObject with 'type' (existing),
@@ -108,20 +122,13 @@ public class MMPortRegistry {
             }
             return PORT_TYPES.get(Ref.Ports.ITEM).getParser().parseRecipeIngredient(normalized);
         }
-        throw new RuntimeException("Unsupported ingredient format: " + element.toString());
-    }
-
-    // Backwards-compatible method used elsewhere in code
-    public static IPortIngredient parseIngredient(JsonObject json) {
-        return parseIngredient((JsonElement) json);
+        throw new RuntimeException("Unsupported ingredient format: " + element);
     }
 
     public static List<PortModel> getPortModelsForControllerId(ResourceLocation id) {
-        return PORTS.stream().filter(x -> {
-            if (x.getBlock().get() instanceof IPortBlock bp) {
-                return bp.getModel().controllerIds().contains(id);
-            }
-            return false;
-        }).map(x -> ((IPortBlock)x.getBlock().get()).getModel()).toList();
+        if (id == null) return List.of();
+        var list = PORT_MODELS_BY_CONTROLLER.get(id);
+        if (list == null) return List.of();
+        return List.copyOf(list);
     }
 }

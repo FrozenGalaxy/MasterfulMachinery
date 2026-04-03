@@ -8,6 +8,7 @@ import io.ticticboom.mods.mm.compat.jei.ingredient.MMJeiIngredients;
 import io.ticticboom.mods.mm.recipe.RecipeModel;
 import io.ticticboom.mods.mm.recipe.RecipeStateModel;
 import io.ticticboom.mods.mm.recipe.RecipeStorages;
+import lombok.Getter;
 import mezz.jei.api.gui.builder.IRecipeLayoutBuilder;
 import mezz.jei.api.gui.builder.IRecipeSlotBuilder;
 import mezz.jei.api.helpers.IJeiHelpers;
@@ -27,13 +28,12 @@ public class SingleItemPortIngredient extends BaseItemPortIngredient {
 
     private final Item item;
     private final ItemStack stack;
-
-    public SingleItemPortIngredient(ResourceLocation itemId, int count) {
-        this(itemId, count, null, false);
-    }
+    @Getter
+    private final ResourceLocation itemId;
 
     public SingleItemPortIngredient(ResourceLocation itemId, int count, CompoundTag requiredNbt, boolean nbtStrong) {
         super(count, createPredicate(itemId), requiredNbt, nbtStrong);
+        this.itemId = itemId;
         item = ForgeRegistries.ITEMS.getValue(itemId);
         if (item == null) {
             throw new RuntimeException(String.format("Could not find item [%s] which is required by an MM recipe", itemId));
@@ -106,7 +106,6 @@ public class SingleItemPortIngredient extends BaseItemPortIngredient {
             });
             for (ItemPortStorage s : group) {
                 if (remainingToInsert <= 0) break;
-                int before = remainingToInsert;
                 if (this.requiredNbt != null) {
                     ItemStack outStack = new ItemStack(item, remainingToInsert);
                     outStack.setTag(this.requiredNbt.copy());
@@ -114,7 +113,6 @@ public class SingleItemPortIngredient extends BaseItemPortIngredient {
                 } else {
                     remainingToInsert = s.insert(item, remainingToInsert);
                 }
-                int moved = before - remainingToInsert;
             }
 
             if (remainingToInsert <= 0) break;
