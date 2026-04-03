@@ -13,6 +13,7 @@ import io.ticticboom.mods.mm.port.botania.mana.BotaniaManaPortStorage;
 import io.ticticboom.mods.mm.port.pneumaticcraft.air.PneumaticAirPortStorage;
 import io.ticticboom.mods.mm.port.kinetic.CreateKineticPortStorage;
 import io.ticticboom.mods.mm.port.mekanism.chemical.MekanismChemicalPortStorage;
+import lombok.Setter;
 import net.minecraftforge.registries.ForgeRegistries;
 import io.ticticboom.mods.mm.recipe.MachineRecipeManager;
 import io.ticticboom.mods.mm.recipe.input.consume.ConsumeRecipeIngredientEntry;
@@ -92,6 +93,14 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
     private final Map<ResourceLocation, Long> recipeNextCheckTime = new HashMap<>();
     // signature of the last observed storage contents; used to detect external changes
     private long lastStorageSignature = 0L;
+    // debounce flag for validation thread creation
+    private volatile boolean validationScheduled = false;
+    // track last-request ms (optional)
+    @Getter
+    @Setter
+    private volatile long lastValidationRequestMs = 0L;
+    // track last activity time per active recipe to detect stalls
+    private final Map<ResourceLocation, Long> activeRecipeLastUpdate = new HashMap<>();
     // Spread-out recipe scanning to avoid checking all recipes every tick when controller is searching
     private List<RecipeModel> cachedStructureRecipes = null;
     private int nextRecipeCheckIndex = 0;
@@ -363,7 +372,10 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
                 storageContentCacheValid = false;
             }
         }
-        for (ResourceLocation id : toRemove) activeRecipes.remove(id);
+        for (ResourceLocation id : toRemove) {
+            activeRecipes.remove(id);
+            activeRecipeLastUpdate.remove(id);
+        }
 
         // Spread recipe checks across multiple ticks to avoid scanning all recipes every tick.
         //noinspection StatementWithEmptyBody
@@ -508,6 +520,8 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
                             storageContentCacheValid = false;
                             newState.setCanProcess(true);
                             activeRecipes.put(recipe.id(), newState);
+                            // record last-activity time for stall detection
+                            activeRecipeLastUpdate.put(recipe.id(), gameTime);
                             Ref.LOG.debug("Controller {} started recipe {}", controllerId, recipe.id());
                             setChanged();
                         }
@@ -521,17 +535,35 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
     }
 
     private void performRecipeTick() {
+        long gameTime = (level == null) ? 0L : level.getGameTime();
+        // stall timeout in ticks: if a recipe hasn't updated for this many ticks, ditch it
+        int recipeStallTimeoutTicks = 200;
         List<ResourceLocation> toRemove = new ArrayList<>();
         for (Map.Entry<ResourceLocation, RecipeStateModel> entry : activeRecipes.entrySet()) {
             ResourceLocation recipeId = entry.getKey();
             RecipeStateModel state = entry.getValue();
             RecipeModel recipe = MachineRecipeManager.RECIPES.get(recipeId);
+            // check for stalled recipe
+            long last = activeRecipeLastUpdate.getOrDefault(recipeId, gameTime);
+            if (gameTime - last > recipeStallTimeoutTicks) {
+                // give up on this recipe, return inputs where possible
+                try {
+                    if (recipe != null && portStorages != null) {
+                        recipe.ditchRecipe(level, state, portStorages);
+                    }
+                } catch (Throwable ignored) { }
+                Ref.LOG.warn("Controller {} ditching stalled recipe {} after {} ticks", controllerId, recipeId, gameTime - last);
+                toRemove.add(recipeId);
+                continue;
+            }
             if (recipe != null) {
+                int prevProgress = state.getTickProgress();
                 recipe.outputs().processTick(level, portStorages, state);
                 // outputs tick may have modified storages; invalidate cached view so next tick rebuilds
                 storageContentCacheValid = false;
                 if (!state.isCanFinish()) state.proceedTick();
                 state.setTickPercentage(((double) state.getTickProgress() / recipe.ticks()) * 100);
+                boolean progressed = state.getTickProgress() != prevProgress;
                 if (state.getTickProgress() >= recipe.ticks()) {
                     state.setCanFinish(true);
                     boolean canOutputs = recipe.outputs().canProcess(level, portStorages, state);
@@ -540,11 +572,18 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
                         toRemove.add(recipeId);
                         // outputs processed - storages changed
                         storageContentCacheValid = false;
+                        progressed = true;
                     }
+                }
+                if (progressed) {
+                    activeRecipeLastUpdate.put(recipeId, gameTime);
                 }
             }
         }
-        for (ResourceLocation id : toRemove) activeRecipes.remove(id);
+        for (ResourceLocation id : toRemove) {
+            activeRecipes.remove(id);
+            activeRecipeLastUpdate.remove(id);
+        }
 
         if (!activeRecipes.isEmpty()) {
             currentRecipe = MachineRecipeManager.RECIPES.get(activeRecipes.keySet().iterator().next());
@@ -719,24 +758,43 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
             }
         });
 
+        // debounce creation of the delayed validation thread so we don't spawn many threads
+        synchronized (this) {
+            lastValidationRequestMs = System.currentTimeMillis();
+            if (validationScheduled) return;
+            validationScheduled = true;
+        }
         Thread t = getThread();
         t.start();
     }
 
     private @NotNull Thread getThread() {
         Thread t = new Thread(() -> {
-            try { Thread.sleep(100); } catch (InterruptedException ignored) { return; }
-            if (level == null || level.isClientSide() || level.getServer() == null) return;
-            level.getServer().execute(() -> {
-                try {
-                    validateStructure(level);
-                    setChanged();
-                    if (level != null) level.sendBlockUpdated(getBlockPos(), getBlockState(), getBlockState(), Block.UPDATE_CLIENTS);
-                } catch (Throwable t2) {
-                    try { Ref.LOG.error("Error during delayed validation for controller at {}: {}", getBlockPos(), t2.toString()); }
-                    catch (Throwable ignored) { }
-                }
-            });
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException ignored) {
+                synchronized (MachineControllerBlockEntity.this) { validationScheduled = false; }
+                return;
+            }
+            if (level == null || level.isClientSide() || level.getServer() == null) {
+                synchronized (MachineControllerBlockEntity.this) { validationScheduled = false; }
+                return;
+            }
+            MinecraftServer server = level.getServer();
+            try {
+                server.execute(() -> {
+                    try {
+                        validateStructure(level);
+                        setChanged();
+                        if (level != null) level.sendBlockUpdated(getBlockPos(), getBlockState(), getBlockState(), Block.UPDATE_CLIENTS);
+                    } catch (Throwable t2) {
+                        try { Ref.LOG.error("Error during delayed validation for controller at {}: {}", getBlockPos(), t2.toString()); }
+                        catch (Throwable ignored) { }
+                    }
+                });
+            } finally {
+                synchronized (MachineControllerBlockEntity.this) { validationScheduled = false; }
+            }
         }, "mm-controller-validate-delayed");
         t.setDaemon(true);
         return t;
