@@ -552,7 +552,7 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
                         recipe.ditchRecipe(level, state, portStorages);
                     }
                 } catch (Throwable ignored) { }
-                Ref.LOG.warn("Controller {} ditching stalled recipe {} after {} ticks", controllerId, recipeId, gameTime - last);
+                Ref.LOG.debug("Controller {} ditching stalled recipe {} after {} ticks", controllerId, recipeId, gameTime - last);
                 toRemove.add(recipeId);
                 continue;
             }
