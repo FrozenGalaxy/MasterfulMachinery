@@ -196,9 +196,9 @@ public class StructureModel {
         }
         var result = new HashMap<String, GuiCountedItemStack>();
         for (PositionedLayoutPiece positionedPiece : layout.getPositionedPieces()) {
-            var guiPiece = positionedPiece.piece().getGuiPiece();
+            var guiPiece = positionedPiece.piece().guiPiece();
             var blocks = guiPiece.getBlocks().stream().map(x -> x.asItem().getDefaultInstance()).toList();
-            String valueId = positionedPiece.piece().getValueId();
+            String valueId = positionedPiece.piece().valueId();
             if (!result.containsKey(valueId)) {
                 result.put(valueId, new GuiCountedItemStack(1, blocks, guiPiece.getDisplay(),
                         valueId));

@@ -1,0 +1,42 @@
+{
+  "id": "mymod:example_ports_anywhere",
+  "name": "Example Ports Anywhere Structure",
+  "controllerIds": ["mymod:controller"],
+  "portsAnywhere": true,
+  "layout": [
+    [
+      "111",
+      "1P1",
+      "111"
+    ],
+    [
+      "2A2",
+      "APA",
+      "2A2"
+    ],
+    [
+      "131",
+      "1Q1",
+      "131"
+    ]
+  ],
+  "key": {
+    "1": { "block": "chisel_chipped_integration:factory_blue_framed_circuit" },
+    "2": { "block": "tconstruct:clear_glass" },
+    "3": { "block": "kubejs:auto_mechanical_sieve" },
+    "A": { "block": "minecraft:air" },
+    "P": {
+      "portType": "mm:item",
+      "input": true,
+      "minTier": 1,
+      "maxTier": 2
+    },
+    "Q": {
+      "portType": "mm:energy",
+      "input": false,
+      "minTier": 2,
+      "maxTier": 3
+    }
+  }
+}
+

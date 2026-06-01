@@ -21,6 +21,9 @@ public class PortStructurePieceType extends MMStructurePieceType {
         if (json.has("input")) {
             input = Optional.of(json.get("input").getAsBoolean());
         }
+        if (json.has("anywhere") && json.get("anywhere").getAsBoolean()) {
+            return new PortAnywhereStructurePiece(port, input);
+        }
         return new PortStructurePiece(port, input);
     }
 }

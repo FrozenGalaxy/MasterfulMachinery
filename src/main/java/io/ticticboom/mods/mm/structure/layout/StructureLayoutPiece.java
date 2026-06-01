@@ -9,7 +9,6 @@ import io.ticticboom.mods.mm.piece.StructurePieceSetupMetadata;
 import io.ticticboom.mods.mm.piece.modifier.StructurePieceModifier;
 import io.ticticboom.mods.mm.piece.type.StructurePiece;
 import io.ticticboom.mods.mm.structure.StructureModel;
-import lombok.Getter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
@@ -18,30 +17,17 @@ import net.minecraft.world.level.block.Rotation;
 
 import java.util.List;
 
-public class StructureLayoutPiece {
-    private final StructurePiece piece;
-    @Getter
-    private final List<StructurePieceModifier> modifiers;
-    @Getter
-    private GuiStructureLayoutPiece guiPiece;
-    @Getter
-    private final String valueId;
-    @Getter
-    private final JsonObject json;
-
-    public StructureLayoutPiece(final StructurePiece piece, List<StructurePieceModifier> modifiers, GuiStructureLayoutPiece guiPiece, String valueId, JsonObject json) {
-        this.piece = piece;
-        this.modifiers = modifiers;
-        this.guiPiece = guiPiece;
-        this.valueId = valueId;
-        this.json = json;
-    }
+/**
+ * @param piece Expose underlying StructurePiece for special handling (e.g. anywhere-port matching)
+ */
+public record StructureLayoutPiece(StructurePiece piece, List<StructurePieceModifier> modifiers,
+                                   GuiStructureLayoutPiece guiPiece, String valueId, JsonObject json) {
 
     public void validate(StructurePieceSetupMetadata meta) {
         piece.validateSetup(meta);
         List<Block> blocks = piece.createBlocksSupplier().get();
-        if (blocks.isEmpty()){
-            Ref.LOG.error("MM ERROR: Render setup failed to validate for: " + this.valueId);
+        if (blocks.isEmpty()) {
+            Ref.LOG.error("MM ERROR: Render setup failed to validate for: {}", this.valueId);
         }
         for (StructurePieceModifier modifier : modifiers) {
             modifier.validateSetup(meta, blocks);

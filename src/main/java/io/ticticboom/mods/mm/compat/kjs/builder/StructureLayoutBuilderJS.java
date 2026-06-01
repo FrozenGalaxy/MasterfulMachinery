@@ -2,8 +2,6 @@ package io.ticticboom.mods.mm.compat.kjs.builder;
 
 import com.google.gson.JsonObject;
 import dev.latvian.mods.rhino.util.HideFromJS;
-import io.ticticboom.mods.mm.piece.MMStructurePieceRegistry;
-import io.ticticboom.mods.mm.piece.type.StructurePiece;
 import io.ticticboom.mods.mm.structure.layout.StructureCharacterGrid;
 import io.ticticboom.mods.mm.structure.layout.StructureKeyChar;
 import io.ticticboom.mods.mm.structure.layout.StructureLayout;
@@ -17,6 +15,7 @@ public class StructureLayoutBuilderJS {
     private final List<List<String>> grid = new ArrayList<>();
     private final Map<StructureKeyChar, StructureLayoutPiece> pieces = new HashMap<>();
     private final StructureBuilderJS root;
+    private boolean portsAnywhere = false;
 
     public StructureLayoutBuilderJS(StructureBuilderJS root) {
         this.root = root;
@@ -32,9 +31,14 @@ public class StructureLayoutBuilderJS {
         return this;
     }
 
+    public StructureLayoutBuilderJS portsAnywhere(boolean v) {
+        this.portsAnywhere = v;
+        return this;
+    }
+
     @HideFromJS
     public StructureLayout build() {
         Collections.reverse(grid);
-        return new StructureLayout(new StructureCharacterGrid(grid), pieces);
+        return new StructureLayout(new StructureCharacterGrid(grid), pieces, portsAnywhere);
     }
 }

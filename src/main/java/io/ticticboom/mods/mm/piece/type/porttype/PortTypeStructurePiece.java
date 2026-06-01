@@ -11,6 +11,7 @@ import io.ticticboom.mods.mm.port.MMPortRegistry;
 import io.ticticboom.mods.mm.setup.RegistryGroupHolder;
 import io.ticticboom.mods.mm.structure.StructureModel;
 import io.ticticboom.mods.mm.util.WorldUtil;
+import lombok.Getter;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -28,9 +29,13 @@ import java.util.function.Supplier;
 @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
 public class PortTypeStructurePiece extends StructurePiece {
 
+    @Getter
     private final ResourceLocation portTypeId;
+    @Getter
     private final Optional<Boolean> input;
+    @Getter
     private final int minTier;
+    @Getter
     private final int maxTier;
 
     private final List<Block> blocks = new ArrayList<>();
@@ -43,6 +48,7 @@ public class PortTypeStructurePiece extends StructurePiece {
     }
 
     // Backwards-compatible constructor: if maxTier wasn't provided, accept any upper tier
+    @SuppressWarnings("unused")
     public PortTypeStructurePiece(ResourceLocation portTypeId, Optional<Boolean> input, int minTier) {
         this(portTypeId, input, minTier, Integer.MAX_VALUE);
     }

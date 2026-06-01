@@ -23,7 +23,7 @@ public class GuiStructureLayout {
     public List<PositionedCyclingBlockRenderer> createBlockRenderers() {
         var result = new ArrayList<PositionedCyclingBlockRenderer>();
         for (PositionedLayoutPiece piece : layout.getPositionedPieces()) {
-            GuiStructureLayoutPiece guiPiece = piece.piece().getGuiPiece();
+            GuiStructureLayoutPiece guiPiece = piece.piece().guiPiece();
             result.add(new PositionedCyclingBlockRenderer(guiPiece.createBlockRenderer(piece.pos()), piece.pos()));
         }
         return result;

@@ -27,8 +27,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
 
-@SuppressWarnings("OptionalUsedAsFieldOrParameterType")
-public class PortStructurePiece extends StructurePiece {
+public class PortAnywhereStructurePiece extends StructurePiece {
 
     @Getter
     private final ResourceLocation portId;
@@ -36,8 +35,7 @@ public class PortStructurePiece extends StructurePiece {
     private final Optional<Boolean> input;
     private final List<Block> blocks = new ArrayList<>();
 
-    public PortStructurePiece(ResourceLocation portId, Optional<Boolean> input) {
-
+    public PortAnywhereStructurePiece(ResourceLocation portId, Optional<Boolean> input) {
         this.portId = portId;
         this.input = input;
     }
@@ -60,14 +58,9 @@ public class PortStructurePiece extends StructurePiece {
 
     @Override
     public boolean formed(Level level, BlockPos pos, StructureModel model) {
-        var be = WorldUtil.getBlockEntity(pos, (ServerLevel) level);
-        if (be instanceof IPortBlockEntity pbe) {
-            if (!pbe.getModel().id().equals(PortUtils.id(portId.getPath(), pbe.getModel().input()))) {
-                return false;
-            }
-            return input.isEmpty() || input.get().equals(pbe.getModel().input());
-        }
-        return false;
+        // This piece is matched in a special pass in StructureLayout (anywhere matching).
+        // Returning true here ensures the main per-position pass doesn't fail on this piece.
+        return true;
     }
 
     @Override
@@ -77,7 +70,7 @@ public class PortStructurePiece extends StructurePiece {
 
     @Override
     public Component createDisplayComponent() {
-        return Component.literal("Port: ").append(Component.literal(portId.toString()).withStyle(ChatFormatting.DARK_AQUA));
+        return Component.literal("Port (anywhere): ").append(Component.literal(portId.toString()).withStyle(ChatFormatting.DARK_AQUA));
     }
 
     @Override
@@ -100,9 +93,9 @@ public class PortStructurePiece extends StructurePiece {
             json.addProperty("portTypeId", portType.toString());
             json.addProperty("portId", Ref.id(pb.getModel().id()).toString());
             json.addProperty("isInput", pb.getModel().input());
-        } else {
-            json.addProperty("isPort", false);
-        }
+        } else json.addProperty("isPort", foundBlock instanceof IPortBlockEntity);
         return json;
     }
 }
+
+

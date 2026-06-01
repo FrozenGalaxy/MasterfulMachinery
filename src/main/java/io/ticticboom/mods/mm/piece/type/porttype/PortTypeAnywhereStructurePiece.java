@@ -1,4 +1,4 @@
-package io.ticticboom.mods.mm.piece.type.port;
+package io.ticticboom.mods.mm.piece.type.porttype;
 
 import com.google.gson.JsonObject;
 import io.ticticboom.mods.mm.Ref;
@@ -6,11 +6,9 @@ import io.ticticboom.mods.mm.model.PortModel;
 import io.ticticboom.mods.mm.piece.StructurePieceSetupMetadata;
 import io.ticticboom.mods.mm.piece.type.StructurePiece;
 import io.ticticboom.mods.mm.port.IPortBlock;
-import io.ticticboom.mods.mm.port.IPortBlockEntity;
 import io.ticticboom.mods.mm.port.MMPortRegistry;
 import io.ticticboom.mods.mm.setup.RegistryGroupHolder;
 import io.ticticboom.mods.mm.structure.StructureModel;
-import io.ticticboom.mods.mm.util.PortUtils;
 import io.ticticboom.mods.mm.util.WorldUtil;
 import lombok.Getter;
 import net.minecraft.ChatFormatting;
@@ -28,18 +26,32 @@ import java.util.Optional;
 import java.util.function.Supplier;
 
 @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
-public class PortStructurePiece extends StructurePiece {
+public class PortTypeAnywhereStructurePiece extends StructurePiece {
 
     @Getter
-    private final ResourceLocation portId;
+    private final ResourceLocation portTypeId;
     @Getter
     private final Optional<Boolean> input;
+    @Getter
+    private final int minTier;
+    @Getter
+    private final int maxTier;
+
     private final List<Block> blocks = new ArrayList<>();
 
-    public PortStructurePiece(ResourceLocation portId, Optional<Boolean> input) {
-
-        this.portId = portId;
+    public PortTypeAnywhereStructurePiece(ResourceLocation portTypeId, Optional<Boolean> input, int minTier, int maxTier) {
+        this.portTypeId = portTypeId;
         this.input = input;
+        this.minTier = minTier;
+        this.maxTier = maxTier;
+    }
+
+    public PortTypeAnywhereStructurePiece(ResourceLocation portTypeId, Optional<Boolean> input, int minTier) {
+        this(portTypeId, input, minTier, Integer.MAX_VALUE);
+    }
+
+    public static PortTypeAnywhereStructurePiece create(ResourceLocation portTypeId, Optional<Boolean> input, int minTier, int maxTier) {
+        return new PortTypeAnywhereStructurePiece(portTypeId, input, minTier, maxTier);
     }
 
     @Override
@@ -47,27 +59,35 @@ public class PortStructurePiece extends StructurePiece {
         for (RegistryGroupHolder port : MMPortRegistry.PORTS) {
             if (port.getBlock().get() instanceof IPortBlock pb) {
                 PortModel model = pb.getModel();
-                if (!model.id().equals(PortUtils.id(portId.getPath(), model.input()))) {
+                if (!model.type().equals(portTypeId)) {
                     continue;
                 }
                 if (input.isPresent() && !input.get().equals(model.input())) {
                     continue;
                 }
-                blocks.add(port.getBlock().get());
+                // check tier compatibility
+                var storageModel = model.config().getModel();
+                int candidateRank = storageModel.getTierRank();
+                try {
+                    if (candidateRank <= 0 && model.jsonConfig() != null && model.jsonConfig().has("tierRank")) {
+                        candidateRank = model.jsonConfig().get("tierRank").getAsInt();
+                    }
+                } catch (Exception ignored) {}
+                if (candidateRank <= 0) candidateRank = 1;
+                if (candidateRank < minTier) continue;
+                if (maxTier != Integer.MAX_VALUE && candidateRank > maxTier) continue;
+                var blk = port.getBlock().get();
+                if (!blocks.contains(blk)) {
+                    blocks.add(blk);
+                }
             }
         }
     }
 
     @Override
     public boolean formed(Level level, BlockPos pos, StructureModel model) {
-        var be = WorldUtil.getBlockEntity(pos, (ServerLevel) level);
-        if (be instanceof IPortBlockEntity pbe) {
-            if (!pbe.getModel().id().equals(PortUtils.id(portId.getPath(), pbe.getModel().input()))) {
-                return false;
-            }
-            return input.isEmpty() || input.get().equals(pbe.getModel().input());
-        }
-        return false;
+        // Matched in StructureLayout special pass
+        return true;
     }
 
     @Override
@@ -77,14 +97,16 @@ public class PortStructurePiece extends StructurePiece {
 
     @Override
     public Component createDisplayComponent() {
-        return Component.literal("Port: ").append(Component.literal(portId.toString()).withStyle(ChatFormatting.DARK_AQUA));
+        return Component.literal("Port Type (anywhere): ").append(Component.literal(portTypeId.toString()).withStyle(ChatFormatting.DARK_AQUA));
     }
 
     @Override
     public JsonObject debugExpected(Level level, BlockPos pos, StructureModel model, JsonObject json) {
-        json.addProperty("portId", portId.toString());
+        json.addProperty("portTypeId", portTypeId.toString());
         json.addProperty("requiresIOCheck", input.isPresent());
         input.ifPresent(aBoolean -> json.addProperty("isInput", aBoolean));
+        json.addProperty("minTier", minTier);
+        json.addProperty("maxTier", maxTier == Integer.MAX_VALUE ? -1 : maxTier);
         return json;
     }
 
@@ -106,3 +128,5 @@ public class PortStructurePiece extends StructurePiece {
         return json;
     }
 }
+
+
