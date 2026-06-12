@@ -19,8 +19,9 @@ public class ControllerBuilderJS {
     }
 
     public ControllerBuilderJS type(String id) {
-        //noinspection removal
-        this.type = new ResourceLocation(id);
+        var rl = ResourceLocation.tryParse(id);
+        if (rl == null) throw new IllegalArgumentException("Invalid resource location: " + id);
+        this.type = rl;
         return this;
     }
 
@@ -29,11 +30,13 @@ public class ControllerBuilderJS {
         return this;
     }
 
+    @SuppressWarnings("unused")
     public ControllerBuilderJS parallelProcessingDefault(boolean parallelProcessingDefault) {
         this.parallelProcessingDefault = parallelProcessingDefault;
         return this;
     }
 
+    @SuppressWarnings("unused")
     public ControllerBuilderJS maxParallelRecipes(int maxParallelRecipes) {
         // allow negative to mean unspecified (-1); clamp to [0,100] otherwise
         if (maxParallelRecipes < 0) this.maxParallelRecipes = -1;

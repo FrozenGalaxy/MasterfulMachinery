@@ -21,7 +21,9 @@ public class MMConfigSetup {
     }
 
     public static void setup() {
-        ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, commonSpec);
+        @SuppressWarnings("removal")
+        var ctx = ModLoadingContext.get();
+        ctx.registerConfig(ModConfig.Type.COMMON, commonSpec);
     }
 
     @SubscribeEvent

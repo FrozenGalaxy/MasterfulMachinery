@@ -145,9 +145,9 @@ public abstract class MekanismChemicalPortIngredient<CHEMICAL extends Chemical<C
         return json;
     }
 
+    @SuppressWarnings("removal")
     @Override
     public void setRecipe(IRecipeLayoutBuilder builder, RecipeModel model, IFocusGroup focus, IJeiHelpers helpers, SlotGrid grid, IRecipeSlotBuilder recipeSlot) {
-        //noinspection removal
         recipeSlot.addTooltipCallback((a, c) -> c.add(1, Component.literal(amount + " mB")));
     }
 }

@@ -32,14 +32,16 @@ public class PortBuilderJS {
 
     @SuppressWarnings("unused")
     public PortBuilderJS controllerId(String controllerId) {
-        //noinspection removal
-        controllers.add(new ResourceLocation(controllerId));
+        var rl = ResourceLocation.tryParse(controllerId);
+        if (rl == null) throw new IllegalArgumentException("Invalid resource location: " + controllerId);
+        controllers.add(rl);
         return this;
     }
 
     public PortBuilderJS config(String type, Consumer<PortConfigBuilderJS> builder) {
-        //noinspection removal
-        this.type = new ResourceLocation(type);
+        var rl = ResourceLocation.tryParse(type);
+        if (rl == null) throw new IllegalArgumentException("Invalid resource location: " + type);
+        this.type = rl;
         this.builder = builder;
         return this;
     }

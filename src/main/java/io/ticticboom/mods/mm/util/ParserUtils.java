@@ -5,7 +5,6 @@ import com.google.gson.JsonObject;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
-import java.util.Locale;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -13,8 +12,10 @@ import java.util.function.Supplier;
 public class ParserUtils {
 
     public static ResourceLocation parseId(JsonElement json) {
-        //noinspection removal
-        return new ResourceLocation(json.getAsString());
+        var s = json.getAsString();
+        var rl = ResourceLocation.tryParse(s);
+        if (rl == null) throw new RuntimeException("Invalid resource location: " + s);
+        return rl;
     }
 
     public static ResourceLocation parseId(JsonObject json, String key) {
@@ -30,6 +31,7 @@ public class ParserUtils {
         throw new RuntimeException("Failed to parse text component as literal or translatable, Refer to MM documentation for assistance");
     }
 
+    @SuppressWarnings("unused")
     public static Component parseComponent(JsonObject json, String key) {
         return parseComponent(json.get(key));
     }

@@ -13,6 +13,7 @@ import net.minecraft.nbt.NbtOps;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.items.ItemStackHandler;
+import org.jetbrains.annotations.NotNull;
 
 public class ItemPortHandler extends ItemStackHandler {
 
@@ -66,9 +67,7 @@ public class ItemPortHandler extends ItemStackHandler {
         if (ct.contains("counts")) {
             int[] arr = ct.getIntArray("counts");
             int len = Math.min(arr.length, actualCounts.length);
-            for (int i = 0; i < len; i++) {
-                actualCounts[i] = arr[i];
-            }
+            System.arraycopy(arr, 0, actualCounts, 0, len);
         }
     }
 
@@ -85,7 +84,8 @@ public class ItemPortHandler extends ItemStackHandler {
             if (stack.isEmpty()) {
                 return 64;
             }
-            return stack.getItem().getMaxStackSize();
+            // Use ItemStack-sensitive API instead of the deprecated Item#getMaxStackSize()
+            return stack.getMaxStackSize();
         }
 
         // override is set
@@ -104,16 +104,16 @@ public class ItemPortHandler extends ItemStackHandler {
     }
 
     @Override
-    public void setStackInSlot(int slot, ItemStack stack) {
+    public void setStackInSlot(int slot, @NotNull ItemStack stack) {
         // set actual count to whatever the provided stack has (may be clamped)
-        actualCounts[slot] = (stack == null) ? 0 : stack.getCount();
+        actualCounts[slot] = stack.getCount();
         // call super after updating actualCounts so onContentsChanged() sees the new actual state
         super.setStackInSlot(slot, stack);
     }
 
     @Override
-    public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) {
-        if (stack == null || stack.isEmpty()) {
+    public @NotNull ItemStack insertItem(int slot, @NotNull ItemStack stack, boolean simulate) {
+        if (stack.isEmpty()) {
             return ItemStack.EMPTY;
         }
         if (slot < 0 || slot >= getSlots()) {
@@ -151,7 +151,7 @@ public class ItemPortHandler extends ItemStackHandler {
                 return stack; // different item
             }
             // respect NBT: only merge when tags are equal or both null
-            if (!areTagsEqualOrNull(existing.getTag(), stack.getTag())) {
+            if (areTagsDifferentOrNull(existing.getTag(), stack.getTag())) {
                 return stack; // different tag -> do not merge here
             }
             int existingCount = actualCounts[slot];
@@ -194,13 +194,11 @@ public class ItemPortHandler extends ItemStackHandler {
         }
     }
 
+    @SuppressWarnings("unused")
     public int canInsert(Item item, int count) {
-        // Delegate to the ItemStack-aware implementation so behavior (NBT, actualCounts, threadPreferEmpty)
-        // is centralized and consistent.
         return canInsert(new ItemStack(item), count);
     }
 
-    // New helper to probe canInsert for ItemStack (considers tag as separate identity when appropriate)
     public int canInsert(ItemStack stack, int count) {
         if (stack == null || stack.isEmpty()) return count;
         int slots = getSlots();
@@ -221,7 +219,7 @@ public class ItemPortHandler extends ItemStackHandler {
                     ItemStack s = getStackInSlot(slot);
                     if (s.isEmpty()) continue;
                     if (s.getItem() != stack.getItem()) continue;
-                    if (!areTagsEqualOrNull(s.getTag(), stack.getTag())) continue;
+                    if (areTagsDifferentOrNull(s.getTag(), stack.getTag())) continue;
                     int limit = getSlotLimit(slot);
                     int space = limit - actualCounts[slot];
                     if (space > 0) available += space;
@@ -232,7 +230,7 @@ public class ItemPortHandler extends ItemStackHandler {
                     ItemStack s = getStackInSlot(slot);
                     if (s.isEmpty()) continue;
                     if (s.getItem() != stack.getItem()) continue;
-                    if (!areTagsEqualOrNull(s.getTag(), stack.getTag())) continue;
+                    if (areTagsDifferentOrNull(s.getTag(), stack.getTag())) continue;
                     int limit = getSlotLimit(slot);
                     int space = limit - actualCounts[slot];
                     if (space > 0) available += space;
@@ -268,7 +266,7 @@ public class ItemPortHandler extends ItemStackHandler {
                 ItemStack existing = getStackInSlot(slot);
                 if (existing.isEmpty()) continue;
                 if (existing.getItem() != stack.getItem()) continue;
-                if (!areTagsEqualOrNull(existing.getTag(), stack.getTag())) continue;
+                if (areTagsDifferentOrNull(existing.getTag(), stack.getTag())) continue;
                 int limit = getSlotLimit(slot);
                 int space = limit - actualCounts[slot];
                 if (space <= 0) continue;
@@ -282,7 +280,7 @@ public class ItemPortHandler extends ItemStackHandler {
                 ItemStack existing = getStackInSlot(slot);
                 if (existing.isEmpty()) continue;
                 if (existing.getItem() != stack.getItem()) continue;
-                if (!areTagsEqualOrNull(existing.getTag(), stack.getTag())) continue;
+                if (areTagsDifferentOrNull(existing.getTag(), stack.getTag())) continue;
                 int limit = getSlotLimit(slot);
                 int space = limit - actualCounts[slot];
                 if (space <= 0) continue;
@@ -391,7 +389,7 @@ public class ItemPortHandler extends ItemStackHandler {
             ItemStack existing = getStackInSlot(slot);
             if (existing.isEmpty()) continue;
             if (existing.getItem() != template.getItem()) continue;
-            if (checkNbt && !areTagsEqualOrNull(existing.getTag(), template.getTag())) continue;
+            if (checkNbt && areTagsDifferentOrNull(existing.getTag(), template.getTag())) continue;
             int limit = getSlotLimit(slot);
             int space = limit - existing.getCount();
             if (space <= 0) continue;
@@ -406,14 +404,14 @@ public class ItemPortHandler extends ItemStackHandler {
         return remainingToInsert;
     }
 
-    private boolean areTagsEqualOrNull(CompoundTag a, CompoundTag b) {
-        if (a == null && b == null) return true;
-        if (a == null || b == null) return false;
-        return a.equals(b);
+    private boolean areTagsDifferentOrNull(CompoundTag a, CompoundTag b) {
+        if (a == null && b == null) return false;
+        if (a == null || b == null) return true;
+        return !a.equals(b);
     }
 
     @Override
-    public ItemStack extractItem(int slot, int amount, boolean simulate) {
+    public @NotNull ItemStack extractItem(int slot, int amount, boolean simulate) {
         if (slot < 0 || slot >= getSlots() || amount <= 0) return ItemStack.EMPTY;
         if (actualCounts[slot] <= 0) return ItemStack.EMPTY;
         ItemStack display = getStackInSlot(slot);
@@ -452,7 +450,7 @@ public class ItemPortHandler extends ItemStackHandler {
      */
     public ItemStack getActualDisplayStack(int slot) {
         ItemStack disp = getStackInSlot(slot);
-        if (disp == null || disp.isEmpty()) return ItemStack.EMPTY;
+        if (disp.isEmpty()) return ItemStack.EMPTY;
         ItemStack copy = disp.copy();
         copy.setCount(actualCounts[slot]);
         return copy;
@@ -461,6 +459,7 @@ public class ItemPortHandler extends ItemStackHandler {
     /**
      * Clears all stacks and actual counts.
      */
+    @SuppressWarnings("unused")
     public void clearAll() {
         for (int i = 0; i < stacks.size(); i++) {
             stacks.set(i, ItemStack.EMPTY);
