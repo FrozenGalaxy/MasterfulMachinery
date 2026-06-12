@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on "Keep a Changelog" and this project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.33.9] - 2026-06-12
+
+ ### Added
+ - JEI: Recipe tab — compact quantity badges for item displays (suffixes: K, M, G; quantities are abbreviated for 10,000+).
+ - JEI: Hovering an item shows the full quantity; holding Shift reveals full quantities for all items.
+
 ## [0.1.33.8] - 2026-06-12
 
 ### Added
