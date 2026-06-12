@@ -96,33 +96,26 @@ public class MMStructureCategory implements IRecipeCategory<StructureModel> {
         guiRenderer.init();
         var countedItemStacks = recipe.getCountedItemStacks();
 
-        // Determine rows needed. JEI slot grid is 8 columns wide.
         int columns = 8;
         int itemCount = countedItemStacks.size();
 
-        // Default rows used by the original layout
         int baseRows = 3;
 
-        // For every additional 8 items beyond 16, add another row.
         int rows = baseRows;
         if (itemCount > 16) {
-            int extra = (itemCount - 16 + (columns - 1)) / columns; // ceil((itemCount-16)/columns)
+            int extra = (itemCount - 16 + (columns - 1)) / columns;
             rows = baseRows + extra;
         }
 
         var grid = new SlotGrid(20, 20, columns, rows, 1, 130);
         recipe.setGrid(grid);
 
-        // adjust dynamic background/height so that all slots are clickable
         if (itemCount > 16) {
             int extraRows = rows - baseRows;
-            // increase the overall panel height by the number of extra rows * row pixel height (20)
             dynamicHeight = PANEL_SIZE.y + (extraRows * 20);
-            // also extend the drawable background height portion we use (base 121)
             int newBgHeight = BASE_BACKGROUND_HEIGHT + (extraRows * 20);
             background = helper.createDrawable(Ref.UiTextures.GUI_LARGE_JEI, 0, 0, PANEL_SIZE.x, newBgHeight);
         } else {
-            // reset to defaults
             dynamicHeight = PANEL_SIZE.y;
             background = helper.createDrawable(Ref.UiTextures.GUI_LARGE_JEI, 0, 0, PANEL_SIZE.x, BASE_BACKGROUND_HEIGHT);
         }
