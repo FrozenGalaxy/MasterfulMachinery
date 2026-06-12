@@ -63,6 +63,13 @@ public class SimpleRecipeOutputEntry implements IRecipeOutputEntry {
         SlotGridEntry slot = grid.next();
         slot.setUsed();
         var rSlot = builder.addSlot(RecipeIngredientRole.OUTPUT, slot.getInnerX(), slot.getInnerY());
+        // if underlying ingredient is an item, store its intended count on the slot for JEI rendering
+        try {
+            if (ingredient instanceof io.ticticboom.mods.mm.port.item.BaseItemPortIngredient bif) {
+                slot.setBadgeCount(bif.getCount());
+            }
+        } catch (Throwable ignored) {
+        }
         ingredient.setRecipe(builder, model, focus, helpers, grid, rSlot);
         double percent = chance * 100.0;
         String percentStr = new java.math.BigDecimal(Double.toString(percent)).setScale(4, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();

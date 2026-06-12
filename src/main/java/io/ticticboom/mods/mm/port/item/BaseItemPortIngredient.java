@@ -7,21 +7,23 @@ import io.ticticboom.mods.mm.port.IPortIngredient;
 import io.ticticboom.mods.mm.recipe.RecipeStateModel;
 import io.ticticboom.mods.mm.recipe.RecipeStorages;
 import io.ticticboom.mods.mm.util.NbtMatchUtils;
+import lombok.Getter;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.function.Predicate;
 
 public abstract class BaseItemPortIngredient implements IPortIngredient {
 
+    @Getter
     protected final int count;
     protected final Predicate<ItemStack> filter;
     protected final CompoundTag requiredNbt;
     protected final boolean nbtStrong;
 
+    @SuppressWarnings("unused")
     public BaseItemPortIngredient(int count, Predicate<ItemStack> filter) {
         this(count, filter, null, false);
     }

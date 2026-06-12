@@ -32,7 +32,8 @@ public class TagItemPortIngredient extends BaseItemPortIngredient {
         super(count, createPredicate(tagId), requiredNbt, nbtStrong);
         this.tag = ItemTags.create(tagId);
         stacks = ConditionalLazy.create(() -> Objects.requireNonNull(ForgeRegistries.ITEMS.tags()).getTag(tag).stream().map(x -> {
-            var s = new ItemStack(x, count);
+            // use display stacks with count 1 to avoid huge JEI overlay numbers; badge shows real count
+            var s = new ItemStack(x, 1);
             if (requiredNbt != null) s.setTag(requiredNbt.copy());
             return s;
         }).toList(),

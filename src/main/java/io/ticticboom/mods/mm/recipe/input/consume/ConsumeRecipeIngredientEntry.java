@@ -66,6 +66,13 @@ public class ConsumeRecipeIngredientEntry implements IRecipeIngredientEntry {
         SlotGridEntry slot = grid.next();
         var rSlot = builder.addSlot(RecipeIngredientRole.INPUT, slot.getInnerX(), slot.getInnerY());
         slot.setUsed();
+        // if underlying ingredient is an item with a count, store that count on the slot for JEI rendering
+        try {
+            if (ingredient instanceof io.ticticboom.mods.mm.port.item.BaseItemPortIngredient bif) {
+                slot.setBadgeCount(bif.getCount());
+            }
+        } catch (Throwable ignored) {
+        }
         // If chance is zero (or negative), mark the slot so JEI can render a small 'x' badge
         if (chance <= 0.0) {
             slot.setBadgeNotUsed();

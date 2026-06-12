@@ -1,5 +1,8 @@
 package io.ticticboom.mods.mm.compat.jei;
 
+import lombok.Getter;
+import lombok.Setter;
+
 public class SlotGridEntry {
     public final int x;
     public final int y;
@@ -7,6 +10,10 @@ public class SlotGridEntry {
     private boolean used;
     // Badge flag set when the ingredient/slot should show a small 'x' in JEI (e.g. 0% consumption)
     private boolean badgeNotUsed = false;
+    // optional numeric badge (e.g. item count) to display in the slot; -1 when unset
+    @Getter
+    @Setter
+    private int badgeCount = -1;
     public SlotGridEntry(int x, int y) {
 
         this.x = x;
@@ -37,4 +44,9 @@ public class SlotGridEntry {
     public boolean hasBadgeNotUsed() {
         return this.badgeNotUsed;
     }
+
+    public boolean hasBadgeCount() {
+        return this.badgeCount >= 0;
+    }
+
 }
