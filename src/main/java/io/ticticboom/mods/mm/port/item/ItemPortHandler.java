@@ -19,7 +19,7 @@ public class ItemPortHandler extends ItemStackHandler {
     public static Codec<List<ItemStack>> STACKS_CODEC = Codec.list(ItemStack.CODEC);
     private final INotifyChangeFunction changed;
     private final int slotCapacity; // 0 = use item default
-    private static final int HARD_MAX = 1024;
+    private static final int HARD_MAX = 16384;
 
     private final int[] actualCounts;
 
