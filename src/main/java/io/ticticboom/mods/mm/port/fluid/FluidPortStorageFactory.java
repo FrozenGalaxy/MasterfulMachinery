@@ -26,6 +26,7 @@ public class FluidPortStorageFactory implements IPortStorageFactory {
         json.addProperty("rows", model.rows());
         json.addProperty("columns", model.columns());
         json.addProperty("slotCapacity", model.slotCapacity());
+        json.addProperty("tierRank", model.getTierRank());
         return json;
     }
 

@@ -40,6 +40,6 @@ public class EnergyPortConfigBuilderJS extends PortConfigBuilderJS {
 
     @Override
     public IPortStorageModel build() {
-        return new EnergyPortStorageModel(capacity, maxReceive, maxExtract, isAutoPushSet ? () -> autoPush : () -> MMConfig.DEFAULT_PORT_AUTO_PUSH);
+        return new EnergyPortStorageModel(capacity, maxReceive, maxExtract, isAutoPushSet ? () -> autoPush : () -> MMConfig.DEFAULT_PORT_AUTO_PUSH, getTierRank());
     }
 }

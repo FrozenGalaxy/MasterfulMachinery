@@ -15,7 +15,13 @@ public class FluidPortParser implements IPortParser {
         var columns = json.get("columns").getAsInt();
         var slotCapacity = json.get("slotCapacity").getAsInt();
         var autoPush = ParserUtils.parseOrDefaultSupplier(json, "autoPush", () -> MMConfig.DEFAULT_PORT_AUTO_PUSH, JsonElement::getAsBoolean);
-        return new FluidPortStorageFactory(new FluidPortStorageModel(rows, columns, slotCapacity, autoPush));
+        int tierRank = 0;
+        if (json.has("tierRank")) {
+            try {
+                tierRank = json.get("tierRank").getAsInt();
+            } catch (Exception ignored) {}
+        }
+        return new FluidPortStorageFactory(new FluidPortStorageModel(rows, columns, slotCapacity, autoPush, tierRank));
     }
 
     @Override

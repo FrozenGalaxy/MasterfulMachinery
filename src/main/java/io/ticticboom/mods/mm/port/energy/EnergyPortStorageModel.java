@@ -12,7 +12,8 @@ public record EnergyPortStorageModel(
         int capacity,
         int maxReceive,
         int maxExtract,
-        Supplier<Boolean> autoPush
+        Supplier<Boolean> autoPush,
+        int tierRank
 ) implements IPortStorageModel {
 
     public static EnergyPortStorageModel parse(JsonObject json) {
@@ -20,6 +21,17 @@ public record EnergyPortStorageModel(
         int maxReceive = json.get("maxReceive").getAsInt();
         int maxExtract = json.get("maxExtract").getAsInt();
         var autoPush = ParserUtils.parseOrDefaultSupplier(json, "autoPush", () -> MMConfig.DEFAULT_PORT_AUTO_PUSH, JsonElement::getAsBoolean);
-        return new EnergyPortStorageModel(capacity, maxReceive, maxExtract, autoPush);
+        int tierRank = 0;
+        if (json.has("tierRank")) {
+            try {
+                tierRank = json.get("tierRank").getAsInt();
+            } catch (Exception ignored) {}
+        }
+        return new EnergyPortStorageModel(capacity, maxReceive, maxExtract, autoPush, tierRank);
+    }
+
+    @Override
+    public int getTierRank() {
+        return tierRank;
     }
 }

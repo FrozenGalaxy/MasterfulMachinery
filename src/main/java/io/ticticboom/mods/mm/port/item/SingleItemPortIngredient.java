@@ -38,8 +38,9 @@ public class SingleItemPortIngredient extends BaseItemPortIngredient {
         if (item == null) {
             throw new RuntimeException(String.format("Could not find item [%s] which is required by an MM recipe", itemId));
         }
-        // use a display stack with count 1 so JEI doesn't render an enormous overlay number
-        stack = new ItemStack(item, 1);
+        // use a display stack with the real required count so external transfer/encode handlers
+        // that read the ItemStack count (rather than the JEI badge) get the correct amount.
+        stack = new ItemStack(item, count);
         if (requiredNbt != null) {
             stack.setTag(requiredNbt.copy());
         }

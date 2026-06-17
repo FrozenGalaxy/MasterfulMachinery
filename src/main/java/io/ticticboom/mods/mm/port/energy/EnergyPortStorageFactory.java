@@ -25,6 +25,7 @@ public class EnergyPortStorageFactory implements IPortStorageFactory {
         json.addProperty("capacity", model.capacity());
         json.addProperty("maxReceive", model.maxReceive());
         json.addProperty("maxExtract", model.maxExtract());
+        json.addProperty("tierRank", model.getTierRank());
         return json;
     }
 

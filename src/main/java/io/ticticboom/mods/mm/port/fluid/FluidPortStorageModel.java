@@ -8,6 +8,12 @@ public record FluidPortStorageModel(
     int rows,
     int columns,
     int slotCapacity,
-    Supplier<Boolean> autoPush
+    Supplier<Boolean> autoPush,
+    int tierRank
 ) implements ISlottedPortStorageModel {
+
+    @Override
+    public int getTierRank() {
+        return tierRank;
+    }
 }

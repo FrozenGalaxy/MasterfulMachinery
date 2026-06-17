@@ -18,7 +18,7 @@ public class FluidPortConfigBuilderJS extends PortConfigBuilderJS {
 
     @Override
     public IPortStorageModel build() {
-        return new FluidPortStorageModel(rows, columns, slotCapacity, isAutoPushSet ? () -> autoPush : () -> MMConfig.DEFAULT_PORT_AUTO_PUSH);
+        return new FluidPortStorageModel(rows, columns, slotCapacity, isAutoPushSet ? () -> autoPush : () -> MMConfig.DEFAULT_PORT_AUTO_PUSH, getTierRank());
     }
 
     public FluidPortConfigBuilderJS rows(int rows) {

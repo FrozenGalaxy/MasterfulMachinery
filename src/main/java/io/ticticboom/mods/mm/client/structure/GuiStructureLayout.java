@@ -24,7 +24,10 @@ public class GuiStructureLayout {
         var result = new ArrayList<PositionedCyclingBlockRenderer>();
         for (PositionedLayoutPiece piece : layout.getPositionedPieces()) {
             GuiStructureLayoutPiece guiPiece = piece.piece().guiPiece();
-            result.add(new PositionedCyclingBlockRenderer(guiPiece.createBlockRenderer(piece.pos()), piece.pos()));
+            var renderers = guiPiece.createBlockRenderer(piece.pos());
+            // skip pieces that have no renderer blocks (e.g. port types with no matching registered blocks at the configured tier)
+            if (renderers == null || renderers.isEmpty()) continue;
+            result.add(new PositionedCyclingBlockRenderer(renderers, piece.pos()));
         }
         return result;
     }
