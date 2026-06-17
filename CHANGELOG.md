@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on "Keep a Changelog" and this project follows [Semantic Versioning](https://semver.org/).
 
-## [0.1.34.0] - 2026-06-17
+## [0.1.33.10] - 2026-06-17
 
 ### Added
 - Fluid and Energy ports: numeric `tierRank` support in storage models, parsers, builders and serializers. `PortConfigBuilderJS.tierRank(int)` now applies to fluid and energy ports as well.
