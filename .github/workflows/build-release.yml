@@ -15,6 +15,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout sources
@@ -33,7 +34,7 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Build with Gradle
-        run: ./gradlew build --no-daemon
+        run: ./gradlew build --no-daemon --console=plain --info --stacktrace
 
       - name: Collect release jar
         shell: bash
@@ -54,20 +55,24 @@ jobs:
             exit 1
           fi
 
-          echo "Found jars:"
-          printf '%s\n' "${jars[@]}"
+          if [ "${#jars[@]}" -gt 1 ]; then
+            echo "Multiple candidate release jars found:"
+            printf '%s\n' "${jars[@]}"
+            exit 1
+          fi
 
-          cp "${jars[@]}" dist/
+          cp "${jars[0]}" dist/
+          echo "JAR_NAME=$(basename "${jars[0]}")" >> "$GITHUB_ENV"
 
-      - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload raw jar artifact
+        uses: actions/upload-artifact@v7
         with:
-          name: MasterfulMachinery-jar
-          path: dist/*.jar
+          path: dist/${{ env.JAR_NAME }}
+          archive: false
 
       - name: Upload jar to GitHub Release
         if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "${{ github.event.release.tag_name }}" dist/*.jar --clobber
+          gh release upload "${{ github.event.release.tag_name }}" "dist/${JAR_NAME}" --clobber
