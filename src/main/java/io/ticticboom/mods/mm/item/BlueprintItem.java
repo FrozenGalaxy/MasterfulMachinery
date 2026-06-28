@@ -14,6 +14,7 @@ import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Rotation;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -26,7 +27,7 @@ public class BlueprintItem extends Item {
     }
 
     @Override
-    public void appendHoverText(ItemStack stack, @Nullable Level level, List<Component> texts, TooltipFlag tipFlag) {
+    public void appendHoverText(@NotNull ItemStack stack, @Nullable Level level, @NotNull List<Component> texts, @NotNull TooltipFlag tipFlag) {
         super.appendHoverText(stack, level, texts, tipFlag);
         var structure = getStructure(stack);
         if (structure == null) {
@@ -38,11 +39,11 @@ public class BlueprintItem extends Item {
     }
 
     @Override
-    public InteractionResult useOn(UseOnContext context) {
+    public @NotNull InteractionResult useOn(UseOnContext context) {
         Player player = context.getPlayer();
         Level level = context.getLevel();
-        if (player == null || level == null) {
-            return;
+        if (player == null) {
+            return InteractionResult.PASS;
         }
 
         if (!player.isShiftKeyDown() || !player.getAbilities().instabuild) {
@@ -87,6 +88,7 @@ public class BlueprintItem extends Item {
             return null;
         }
 
+        assert stack.getTag() != null;
         var id = ResourceLocation.tryParse(stack.getTag().getString(TAG_STRUCTURE));
         if (id == null) {
             return null;
