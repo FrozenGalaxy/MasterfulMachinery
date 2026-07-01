@@ -5,6 +5,7 @@ import io.ticticboom.mods.mm.config.MMConfig;
 import io.ticticboom.mods.mm.controller.IControllerBlockEntity;
 import io.ticticboom.mods.mm.controller.IControllerPart;
 import io.ticticboom.mods.mm.model.ControllerModel;
+import io.ticticboom.mods.mm.model.RecipeSelectionMode;
 import io.ticticboom.mods.mm.port.MMPortRegistry;
 import io.ticticboom.mods.mm.port.item.ItemPortStorage;
 import io.ticticboom.mods.mm.port.fluid.FluidPortStorage;
@@ -104,6 +105,24 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
     // Spread-out recipe scanning to avoid checking all recipes every tick when controller is searching
     private List<RecipeModel> cachedStructureRecipes = null;
     private int nextRecipeCheckIndex = 0;
+    private ResourceLocation lastStartedRecipeId = null;
+    private ResourceLocation lastStartedInputItemId = null;
+
+    public StructureModel getStructure() {
+        return structure;
+    }
+
+    public RecipeModel getCurrentRecipe() {
+        return currentRecipe;
+    }
+
+    public long getLastValidationRequestMs() {
+        return lastValidationRequestMs;
+    }
+
+    public void setLastValidationRequestMs(long lastValidationRequestMs) {
+        this.lastValidationRequestMs = lastValidationRequestMs;
+    }
 
     public void tick() {
         if (level == null || level.isClientSide() || isRemoved()) {
@@ -385,11 +404,17 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
             if (cachedStructureRecipes == null) cachedStructureRecipes = new ArrayList<>(MachineRecipeManager.getRecipesByStrucutreId(structure.id()));
             if (!cachedStructureRecipes.isEmpty()) {
                 int total = cachedStructureRecipes.size();
-                // tune this: how many recipes to probe per tick when searching
-                int maxRecipeChecksPerTick = 5;
+                // tune this: how many recipes to probe per tick when searching.
+                // Fair modes intentionally scan the whole recipe list so they can find a
+                // different runnable recipe/input item instead of being trapped in adjacent
+                // same-input recipes, e.g. sieve/sand/* entries.
+                int maxRecipeChecksPerTick = controllerModel.recipeSelectionMode().fairScheduling() ? total : 5;
                 int checks = Math.min(maxRecipeChecksPerTick, total);
                 int idx = nextRecipeCheckIndex % total;
                 int performed = 0;
+                RecipeModel deferredRecipe = null;
+                ResourceLocation deferredPrimaryInputItemId = null;
+                boolean startedRecipeThisPass = false;
                 while (performed < checks) {
                     RecipeModel recipe = cachedStructureRecipes.get(idx);
                     idx = (idx + 1) % total;
@@ -499,42 +524,88 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
                         continue;
                     }
 
-                    boolean allowParallel = recipe.parallelProcessing();
-                    if (recipe.parallelProcessing() == MMConfig.PARALLEL_PROCESSING_DEFAULT) {
-                        allowParallel = controllerModel.parallelProcessingDefault();
-                    }
-                    int controllerLimit = controllerModel.maxParallelRecipes();
-                    // allow per-structure override when formed
-                    if (structure != null) {
-                        int structLimit = structure.maxParallelRecipes();
-                        if (structLimit >= 0) controllerLimit = structLimit;
-                    }
-                    if (controllerLimit < 0) controllerLimit = MMConfig.MAX_PARALLEL_RECIPES; // -1 => use global default
-                    boolean canStartBasedOnParallelFlag = allowParallel || activeRecipes.isEmpty();
-                    boolean canStartBasedOnLimit;
-                    if (controllerLimit == 0) {
-                        // explicit 0 means disable parallel processing entirely (only allow a single active recipe)
-                        canStartBasedOnLimit = activeRecipes.isEmpty();
-                    } else {
-                        canStartBasedOnLimit = activeRecipes.size() < controllerLimit;
-                    }
-                    if (canStartBasedOnParallelFlag && canStartBasedOnLimit) {
-                        RecipeStateModel newState = new RecipeStateModel();
-                        recipe.inputs().process(level, portStorages, newState);
-                        // inputs consumed/changed storages; invalidate cached view
-                        storageContentCacheValid = false;
-                        newState.setCanProcess(true);
-                        activeRecipes.put(recipe.id(), newState);
-                        // record last-activity time for stall detection
-                        activeRecipeLastUpdate.put(recipe.id(), gameTime);
-                        setChanged();
+                    if (canStartRecipeGivenParallelRules(recipe)) {
+                        ResourceLocation primaryInputItemId = getPrimaryConsumedItemInputId(recipe);
+                        if (shouldDeferRecipeBySelectionMode(recipe, primaryInputItemId)) {
+                            if (deferredRecipe == null) {
+                                deferredRecipe = recipe;
+                                deferredPrimaryInputItemId = primaryInputItemId;
+                            }
+                            continue;
+                        }
+                        startRecipe(recipe, gameTime, primaryInputItemId);
+                        startedRecipeThisPass = true;
                     }
 
+                }
+                if (!startedRecipeThisPass && deferredRecipe != null && !activeRecipes.containsKey(deferredRecipe.id())
+                        && canStartRecipeGivenParallelRules(deferredRecipe)
+                        && deferredRecipe.inputs().canProcess(level, portStorages, new RecipeStateModel())) {
+                    startRecipe(deferredRecipe, gameTime, deferredPrimaryInputItemId);
                 }
                 nextRecipeCheckIndex = idx;
             }
         }
         performRecipeTick();
+    }
+
+    private boolean canStartRecipeGivenParallelRules(RecipeModel recipe) {
+        boolean allowParallel = recipe.parallelProcessing();
+        if (recipe.parallelProcessing() == MMConfig.PARALLEL_PROCESSING_DEFAULT) {
+            allowParallel = controllerModel.parallelProcessingDefault();
+        }
+        int controllerLimit = controllerModel.maxParallelRecipes();
+        if (structure != null) {
+            int structLimit = structure.maxParallelRecipes();
+            if (structLimit >= 0) controllerLimit = structLimit;
+        }
+        if (controllerLimit < 0) controllerLimit = MMConfig.MAX_PARALLEL_RECIPES;
+        boolean canStartBasedOnParallelFlag = allowParallel || activeRecipes.isEmpty();
+        boolean canStartBasedOnLimit = controllerLimit == 0
+                ? activeRecipes.isEmpty()
+                : activeRecipes.size() < controllerLimit;
+        return canStartBasedOnParallelFlag && canStartBasedOnLimit;
+    }
+
+    private void startRecipe(RecipeModel recipe, long gameTime, @Nullable ResourceLocation primaryInputItemId) {
+        RecipeStateModel newState = new RecipeStateModel();
+        recipe.inputs().process(level, portStorages, newState);
+        storageContentCacheValid = false;
+        newState.setCanProcess(true);
+        activeRecipes.put(recipe.id(), newState);
+        activeRecipeLastUpdate.put(recipe.id(), gameTime);
+        lastStartedRecipeId = recipe.id();
+        if (primaryInputItemId != null) {
+            lastStartedInputItemId = primaryInputItemId;
+        }
+        setChanged();
+    }
+
+    private boolean shouldDeferRecipeBySelectionMode(RecipeModel recipe, @Nullable ResourceLocation primaryInputItemId) {
+        RecipeSelectionMode mode = controllerModel.recipeSelectionMode();
+        if (mode == RecipeSelectionMode.AVOID_SAME_RECIPE) {
+            return lastStartedRecipeId != null && lastStartedRecipeId.equals(recipe.id());
+        }
+        if (mode == RecipeSelectionMode.ROUND_ROBIN_INPUT_ITEM) {
+            return primaryInputItemId != null && lastStartedInputItemId != null && lastStartedInputItemId.equals(primaryInputItemId);
+        }
+        return false;
+    }
+
+    @Nullable
+    private ResourceLocation getPrimaryConsumedItemInputId(RecipeModel recipe) {
+        for (var input : recipe.inputs().inputs()) {
+            if (input instanceof ConsumeRecipeIngredientEntry cre) {
+                var ingr = cre.getIngredient();
+                if (ingr instanceof io.ticticboom.mods.mm.port.item.SingleItemPortIngredient single) {
+                    try {
+                        ResourceLocation id = single.getItemId();
+                        if (id != null) return id;
+                    } catch (Throwable ignored) { }
+                }
+            }
+        }
+        return null;
     }
 
     private void performRecipeTick() {
@@ -650,6 +721,8 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
         tag.put("activeRecipes", recipesTag);
         if (structure != null) tag.putString("structureId", structure.id().toString());
         tag.putBoolean("isFormed", isFormed);
+        if (lastStartedRecipeId != null) tag.putString("lastStartedRecipeId", lastStartedRecipeId.toString());
+        if (lastStartedInputItemId != null) tag.putString("lastStartedInputItemId", lastStartedInputItemId.toString());
         tag.putBoolean("filler", true);
         super.saveAdditional(tag);
     }
@@ -680,6 +753,8 @@ public class MachineControllerBlockEntity extends BlockEntity implements IContro
         } else {
             isFormed = (structure != null);
         }
+        lastStartedRecipeId = tag.contains("lastStartedRecipeId") ? ResourceLocation.tryParse(tag.getString("lastStartedRecipeId")) : null;
+        lastStartedInputItemId = tag.contains("lastStartedInputItemId") ? ResourceLocation.tryParse(tag.getString("lastStartedInputItemId")) : null;
         if (!activeRecipes.isEmpty()) {
             currentRecipe = MachineRecipeManager.RECIPES.get(activeRecipes.keySet().iterator().next());
         } else {
